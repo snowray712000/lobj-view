@@ -7,6 +7,10 @@
 - [x] 驗證 release build（Windows、Linux musl 單一執行檔皆可獨立執行，見 261118b）
 - [ ] 驗證 `cargo install`（確認 web/dist 有正確嵌入 crate 包內）
 
+- [x] 實機驗證 HTTPS：Windows 本機與區網 Mac mini 皆成功（見 261118d）
+- [ ] 反向測試：Ubuntu（無畫面）當 server、Windows 當 client；需先取得 Linux 執行檔
+- [ ] Linux 單一執行檔：加入 ring 後 Windows 無法再交叉編譯 musl（缺 C 編譯器），改走 GitHub Actions 或 `zig cc`
+
 ## 次要
 - [ ] 格式確定後，考慮把 lobj 讀寫拆成獨立 crate 以便共用
 - [ ] 命令列直接指定檔案：`lobj-view model.lobj`
