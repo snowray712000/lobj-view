@@ -2,7 +2,34 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 0.0.2：畫面仍是示範模型，尚無法開啟 .lobj 檔。
+> 目前版本 0.0.3：畫面仍是示範模型，尚無法開啟 .lobj 檔。
+
+## 安裝
+
+預編譯執行檔（Linux x86_64 / aarch64、Windows、macOS Intel / Apple Silicon）由 GitHub Actions 建置，發佈在 repo 的 Releases。
+
+### 方法 A：`cargo binstall`（推薦，免編譯）
+
+```bash
+cargo binstall lobj-view --git https://github.com/snowray712000/lobj-view
+```
+
+會下載對應平台的 Release 檔，裝到 `~/.cargo/bin`（Windows 為 `%USERPROFILE%\.cargo\bin`）。
+尚未安裝 cargo / cargo-binstall 的 Ubuntu 使用者見 [doc/ubuntu-install-rust-and-binstall.md](doc/ubuntu-install-rust-and-binstall.md)（不用 `apt install cargo`，改用 rustup）。
+
+### 方法 B：`cargo install`（從原始碼編譯）
+
+```bash
+cargo install --git https://github.com/snowray712000/lobj-view
+```
+
+需要 Rust 1.85 以上與 C 編譯器（Ubuntu：`sudo apt install build-essential`）；不需要 Node.js（`web/dist` 已提交）。
+
+### 方法 C：直接下載
+
+到 Releases 下載 `lobj-view-v<版本>-<target>.tar.gz`（Windows 為 `.zip`），解壓縮後把執行檔放進 PATH。
+
+發佈流程（GitHub Actions cross-compile）見 [doc/github-cross-compile.md](doc/github-cross-compile.md)。
 
 ## 快速開始（本機使用）
 
@@ -98,4 +125,4 @@ cd .. && cargo build --release           # 前端會嵌入執行檔
 ```
 
 `cargo install` 的安裝端不需要 Node.js，但發佈前必須先 build 好 `web/dist`。
-注意：TLS 使用 `ring`，含 C 程式碼，從 Windows 交叉編譯 Linux musl 需要 C 編譯器，建議在 Linux 上或用 CI 建置。
+注意：TLS 使用 `ring`，含 C 程式碼，從 Windows 交叉編譯 Linux musl 需要 C 編譯器，請用 GitHub Actions 建置（見 [doc/github-cross-compile.md](doc/github-cross-compile.md)）。
