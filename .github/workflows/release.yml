@@ -1,0 +1,87 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]     # 推 tag（例如 v0.0.3）時建置並發佈
+  workflow_dispatch:  # 也可在 Actions 頁面手動觸發（只建置，不發佈 release）
+
+permissions:
+  contents: write     # 建立 GitHub Release 需要
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux：用 cross（Docker 內含對應 C 編譯器，ring 需要）做真正的交叉編譯
+          - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,  cross: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest,  cross: true }
+          # Windows / macOS：各平台 runner 原生編譯（macOS 的 arm64 runner 可直接編 x86_64）
+          - { target: x86_64-pc-windows-msvc,     os: windows-latest, cross: false }
+          - { target: x86_64-apple-darwin,        os: macos-latest,   cross: false }
+          - { target: aarch64-apple-darwin,       os: macos-latest,   cross: false }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      # web/dist 已提交進 repo，不需要 Node.js
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          name="lobj-view-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$name"
+          ext=""
+          [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
+          cp "target/${{ matrix.target }}/release/lobj-view$ext" "$name/"
+          cp README.md "$name/"
+          if [[ -n "$ext" ]]; then
+            7z a "$name.zip" "$name" > /dev/null
+            echo "ASSET=$name.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "$name.tar.gz" "$name"
+            echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  release:
+    name: publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
