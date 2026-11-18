@@ -95,6 +95,11 @@ lobj-view --host 0.0.0.0
 - 連的網址不在憑證涵蓋範圍（例如新的 DNS 名稱）→ 用 `--san 名稱` 重新啟動，憑證會自動重簽（CA 不變，不需重新匯入）。
 - 伺服器重新產生 CA（刪過憑證目錄）→ 所有裝置需重新匯入新的 CA。
 - Windows 上用 `curl` 驗證私有 CA 要加 `--ssl-no-revoke`。
+- **Firefox 開 `/trust` 只有「進階」、沒有「接受風險並繼續」**，錯誤碼 `SEC_ERROR_BAD_SIGNATURE`（Edge 卻正常）：
+  - 原因：Firefox 勾選了「允許 Firefox 自動信任您安裝的第三方根憑證」（`security.enterprise_roots.enabled`），因此也會採用 Windows 憑證庫裡的 CA。若那裡留有**同名但金鑰不同的舊 CA**（例如伺服器重新產生過 CA），簽章驗不過，Firefox 視為不可略過的錯誤。
+  - 作法：到 設定 → 隱私權與安全性 → 憑證，**取消勾選**「允許 Firefox 自動信任您安裝的第三方根憑證」，重新整理即會出現「接受風險並繼續」。
+  - 根治：在 Windows 用 `certmgr.msc`（目前使用者）與 `certlm.msc`（本機電腦）刪掉舊的同名 CA，再依上表匯入新的 `ca.crt`，之後可把該選項勾回來。
+  - 若按過「繼續」，Firefox 會記成永久例外（設定 → 憑證 → 檢視憑證 → 伺服器），匯入正確 CA 後建議刪除該例外。
 
 ## 憑證存放位置
 
