@@ -1,0 +1,36 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1e1f22;
+  color: #ddd;
+  font: 13px/1.5 system-ui, sans-serif;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+}
+
+#hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  padding: 6px 10px;
+  background: rgb(0 0 0 / 0.55);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.ok {
+  color: #7ccf7c;
+}
+
+.warn {
+  color: #e6c15a;
+}
+
+.err {
+  color: #e66a6a;
+}

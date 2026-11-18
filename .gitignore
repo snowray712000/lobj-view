@@ -1,0 +1,3 @@
+/target
+/web/node_modules
+# web/dist 不忽略：cargo install 需要它（rust-embed 在編譯時嵌入）
