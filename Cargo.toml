@@ -7,6 +7,16 @@ description = "Web-based viewer for .lobj (labeled binary 3D object) files"
 # 安裝端就不需要 Node.js。
 include = ["src/**", "web/dist/**", "Cargo.toml", "README.md"]
 readme = "README.md"
+repository = "https://github.com/snowray712000/lobj-view"
+
+# cargo binstall：直接下載 GitHub Release 的預編譯檔（檔名規則見 .github/workflows/release.yml）
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ target }.{ archive-format }"
+bin-dir = "{ name }-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [dependencies]
 anyhow = "1.0.104"
