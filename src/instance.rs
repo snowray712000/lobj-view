@@ -14,7 +14,8 @@
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::io::{self, BufRead, BufReader as StdBufReader, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -39,6 +40,8 @@ pub struct Shared {
     root: RwLock<PathBuf>,
     tx: watch::Sender<OpenEvent>,
     tabs: AtomicUsize,
+    /// 每個來源 IP 開著幾個分頁（一個 IP 視為一個「人」）
+    peers: Mutex<HashMap<IpAddr, usize>>,
     last_browser: Mutex<Option<Instant>>,
     url: Mutex<String>,
     local_only: AtomicBool,
@@ -56,6 +59,7 @@ impl Shared {
             root: RwLock::new(root),
             tx: watch::channel(ev).0,
             tabs: AtomicUsize::new(0),
+            peers: Mutex::new(HashMap::new()),
             last_browser: Mutex::new(None),
             url: Mutex::new(String::new()),
             local_only: AtomicBool::new(false),
@@ -84,9 +88,16 @@ impl Shared {
     }
 
     /// 網頁每開一條事件連線就拿一個；連線結束（含分頁關閉）時自動歸還。
-    pub fn tab_guard(self: &Arc<Self>) -> TabGuard {
+    pub fn tab_guard(self: &Arc<Self>, ip: IpAddr) -> TabGuard {
         self.tabs.fetch_add(1, Ordering::Relaxed);
-        TabGuard(self.clone())
+        *self.peers.lock().unwrap().entry(ip).or_default() += 1;
+        TabGuard(self.clone(), ip)
+    }
+
+    /// (人數, 分頁數)：人 = 不同的來源 IP（經 ssh -L 轉發的都會是 127.0.0.1，只算一人）。
+    pub fn usage(&self) -> (usize, usize) {
+        let p = self.peers.lock().unwrap();
+        (p.len(), p.values().sum())
     }
 
     /// 開預設瀏覽器。剛開過（瀏覽器還在啟動、網頁還沒連上）的 10 秒內不重複開。
@@ -119,11 +130,18 @@ impl Shared {
     }
 }
 
-pub struct TabGuard(Arc<Shared>);
+pub struct TabGuard(Arc<Shared>, IpAddr);
 
 impl Drop for TabGuard {
     fn drop(&mut self) {
         self.0.tabs.fetch_sub(1, Ordering::Relaxed);
+        let mut p = self.0.peers.lock().unwrap();
+        if let Some(n) = p.get_mut(&self.1) {
+            *n -= 1;
+            if *n == 0 {
+                p.remove(&self.1);
+            }
+        }
     }
 }
 

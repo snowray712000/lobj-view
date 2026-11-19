@@ -1,6 +1,7 @@
 mod assoc;
 mod instance;
 mod lobj_api;
+mod stats;
 mod tls;
 mod zipfs;
 
@@ -170,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         dir = d;
         initial = Some(sel.unwrap_or_default());
     }
+    stats::start();
     std::thread::spawn(zipfs::cleanup_cache); // 清掉殘留與過期的 zip 解壓快取
     let shared = instance::Shared::new(dir, initial);
     shared.set_local_only(args.host.is_loopback());
@@ -258,10 +260,10 @@ async fn main() -> anyhow::Result<()> {
             Some(m) => {
                 let config = RustlsConfig::from_pem_file(&m.cert, &m.key).await?;
                 axum_server::from_tcp_rustls(listener.into_std()?, config)?
-                    .serve(app.into_make_service())
+                    .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                     .await?;
             }
-            None => axum::serve(listener, app).await?,
+            None => axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?,
         }
         anyhow::Ok(())
     };

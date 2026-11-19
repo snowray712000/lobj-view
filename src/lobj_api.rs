@@ -17,13 +17,14 @@
 
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::{
     Router,
-    extract::{Path as UrlPath, Query, State},
+    extract::{ConnectInfo, Path as UrlPath, Query, State},
     http::{HeaderName, StatusCode, header},
     response::{
         IntoResponse, Response,
@@ -44,18 +45,46 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
         .route("/api/events", get(events))
+        .route("/api/stats", get(stats))
         .with_state(shared)
 }
 
 /// SSE：連上時先送目前的開檔事件，之後每次有人用 `lobj-view <檔案>` 開檔就再送一次。
 /// 連線存在即代表「有網頁開著」，此時就不會再自動開新的瀏覽器分頁。
-async fn events(State(shared): State<Arc<Shared>>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let guard = shared.tab_guard();
+async fn events(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let guard = shared.tab_guard(peer.ip());
     let stream = WatchStream::new(shared.subscribe()).map(move |ev| {
         let _keep = &guard;
         Ok(Event::default().data(format!("{{\"seq\":{},\"path\":{}}}", ev.seq, json_string(&ev.path))))
     });
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// 左上角狀態列用：使用人數 / 分頁數 + 伺服器資源（取自背景取樣的快取，見 `stats.rs`）。
+async fn stats(State(shared): State<Arc<Shared>>) -> Response {
+    let (people, tabs) = shared.usage();
+    let s = crate::stats::read();
+    let gpu = match &s.gpu {
+        Some(g) => format!(
+            "{{\"name\":{},\"util\":{:.0},\"mem_used_mb\":{:.0},\"mem_total_mb\":{:.0}}}",
+            json_string(&g.name),
+            g.util,
+            g.mem_used_mb,
+            g.mem_total_mb
+        ),
+        None => "null".into(),
+    };
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        format!(
+            "{{\"people\":{people},\"tabs\":{tabs},\"ready\":{},\"cpu\":{:.0},\"cores\":{},\"mem_used\":{},\"mem_total\":{},\"proc_cpu\":{:.0},\"proc_mem\":{},\"gpu\":{gpu}}}",
+            s.ready, s.cpu, s.cores, s.mem_used, s.mem_total, s.proc_cpu, s.proc_mem
+        ),
+    )
+        .into_response()
 }
 
 pub fn is_lobj_name(name: &str) -> bool {

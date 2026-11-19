@@ -37,8 +37,13 @@ body {
   padding: 4px 10px;
 }
 
-#status2 {
+#status2,
+#status3 {
   margin-top: 2px;
+}
+
+#status3 span {
+  white-space: nowrap;
 }
 
 #ver {

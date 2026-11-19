@@ -825,6 +825,78 @@ fetch('/api/health')
     healthEl.className = 'err';
   });
 
+// --- 伺服器狀態列：幾人幾個分頁、CPU、記憶體、GPU（後端每 3 秒取樣並快取，這裡約每 5 秒讀一次）---
+interface ServerStats {
+  people: number;
+  tabs: number;
+  ready: boolean;
+  cpu: number;
+  cores: number;
+  mem_used: number;
+  mem_total: number;
+  proc_cpu: number;
+  proc_mem: number;
+  gpu: { name: string; util: number; mem_used_mb: number; mem_total_mb: number } | null;
+}
+
+const status3El = document.getElementById('status3')!;
+const gb = (b: number) => (b / 1073741824).toFixed(1);
+
+function statStat(text: string, level: 'ok' | 'warn' | 'err', title: string): HTMLSpanElement {
+  const s = document.createElement('span');
+  s.textContent = text;
+  s.className = level;
+  s.title = title;
+  return s;
+}
+
+const level = (pct: number): 'ok' | 'warn' | 'err' => (pct >= 90 ? 'err' : pct >= 70 ? 'warn' : 'ok');
+
+function renderStats(s: ServerStats): void {
+  const parts: HTMLElement[] = [
+    statStat(`${s.people} 人 / ${s.tabs} 分頁`, 'ok', '人＝不同的來源 IP；經 ssh -L 轉發的連線都來自 127.0.0.1，只算一人'),
+  ];
+  if (s.ready) {
+    const memPct = s.mem_total ? (s.mem_used / s.mem_total) * 100 : 0;
+    parts.push(
+      statStat(`CPU ${s.cpu}%`, level(s.cpu), `伺服器 ${s.cores} 邏輯核心的整體使用率；lobj-view 本身約 ${s.proc_cpu}%`),
+      statStat(`記憶體 ${gb(s.mem_used)}/${gb(s.mem_total)} GB`, level(memPct), `伺服器整體；lobj-view 本身 ${(s.proc_mem / 1048576).toFixed(0)} MB`),
+    );
+    if (s.gpu) {
+      parts.push(
+        statStat(
+          `GPU ${s.gpu.util}%`,
+          level(s.gpu.util),
+          `${s.gpu.name}；顯存 ${s.gpu.mem_used_mb}/${s.gpu.mem_total_mb} MB。這是伺服器的 GPU，3D 繪圖用的是開瀏覽器那台電腦的 GPU`,
+        ),
+      );
+    }
+  } else {
+    parts.push(statStat('資源取樣中…', 'ok', ''));
+  }
+  const nodes: (Node | string)[] = ['伺服器：'];
+  parts.forEach((p, i) => nodes.push(...(i ? [' · ', p] : [p])));
+  status3El.replaceChildren(...nodes);
+}
+
+async function pollStats(): Promise<void> {
+  let next = 5000;
+  if (!document.hidden) {
+    try {
+      const r = await fetch('/api/stats');
+      if (r.ok) {
+        const s = (await r.json()) as ServerStats;
+        renderStats(s);
+        if (!s.ready) next = 1500; // 後端剛開始取樣，很快就有資料
+      }
+    } catch {
+      /* 伺服器暫時連不上：下次再試 */
+    }
+  }
+  setTimeout(() => void pollStats(), next);
+}
+void pollStats();
+
 // --- 左側：版本號、版本紀錄 dialog、選擇檔案面板收合 ---
 const verEl = document.getElementById('ver')!;
 const versionsEl = document.getElementById('versions')!;
