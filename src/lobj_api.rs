@@ -19,7 +19,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     extract::{Path as UrlPath, Query, State},
-    http::{StatusCode, header},
+    http::{HeaderName, StatusCode, header},
     response::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
@@ -187,7 +187,15 @@ async fn fetch(
     };
 
     match tokio::task::spawn_blocking(move || encode(&path, jaw)).await {
-        Ok(Ok(bytes)) => ([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response(),
+        Ok(Ok((bytes, file_has_colors))) => (
+            [
+                (header::CONTENT_TYPE, "application/octet-stream"),
+                // 檔案本身是否帶有顏色（後端補的不算），前端據此決定自動配色的預設疊加比例
+                (HeaderName::from_static("x-lobj-file-colors"), if file_has_colors { "1" } else { "0" }),
+            ],
+            bytes,
+        )
+            .into_response(),
         Ok(Err(LobjError::Io(e))) if e.kind() == std::io::ErrorKind::NotFound => {
             (StatusCode::NOT_FOUND, "找不到檔案").into_response()
         }
@@ -198,14 +206,15 @@ async fn fetch(
 }
 
 /// 讀檔 → labels 轉 FDI → 補 colors → 編成 `.lobj` 二進位。
-fn encode(path: &Path, jaw: Option<Jaw>) -> Result<Vec<u8>, LobjError> {
+fn encode(path: &Path, jaw: Option<Jaw>) -> Result<(Vec<u8>, bool), LobjError> {
     let mut obj = lobj::load(path, jaw)?;
+    let file_has_colors = obj.colors.is_some();
     if obj.colors.is_none() {
         if let Some(labels) = &obj.labels {
             obj.colors = Some(colors::labels_to_colors(labels, Palette::Unique));
         }
     }
-    lobj::format::to_bytes(&obj)
+    Ok((lobj::format::to_bytes(&obj)?, file_has_colors))
 }
 
 fn json_string(s: &str) -> String {

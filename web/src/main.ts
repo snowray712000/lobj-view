@@ -3,7 +3,7 @@ import './style.css';
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fetchLobj, labelCounts, listLobj, type LobjData } from './lobj';
-import { applyProps, defaultProps, PALETTE, resolveCssColor, type ObjProps } from './props';
+import { applyProps, defaultProps, PALETTE, pickAutoColor, resolveCssColor, type ObjProps } from './props';
 
 const container = document.getElementById('viewport')!;
 const backendEl = document.getElementById('backend')!;
@@ -144,6 +144,10 @@ interface Loaded {
   info: string;
   /** 檔案原本的頂點顏色，color 屬性設回「不設定」時用來還原 */
   orig: Float32Array;
+  /** 沒有任何 label（.stl / .obj / .ply，或 labels 全為 -1）；載入時會自動配一個顏色 */
+  unlabeled: boolean;
+  /** 檔案本身帶顏色（例如有頂點色的 .ply / .obj） */
+  fileHasColors: boolean;
 }
 const loaded = new Map<string, Loaded>();
 // 各檔案的屬性（alpha / color）。取消選取後仍保留，再選回來時沿用。
@@ -153,6 +157,8 @@ const getProps = (f: string): ObjProps => {
   if (!p) propsOf.set(f, (p = defaultProps()));
   return p;
 };
+// 已做過自動配色的檔案：只配一次，之後（含取消選取再選回來）尊重使用者的選擇
+const autoColored = new Set<string>();
 const failed = new Map<string, string>();
 // 目前選取的檔案（可多選，保留選取順序）
 const selected = new Set<string>();
@@ -174,7 +180,8 @@ function buildMesh(data: LobjData): Loaded {
   );
   const counts = [...labelCounts(data.labels)].map(([l, n]) => `${l}:${n}`).join(' ');
   const info = `頂點 ${data.vertices.length / 3}、三角形 ${data.triangles.length / 3}` + (counts ? `\nlabels ${counts}` : '');
-  return { mesh, info, orig };
+  const unlabeled = !data.labels || data.labels.every((l) => l < 0);
+  return { mesh, info, orig, unlabeled, fileHasColors: data.fileHasColors !== false };
 }
 
 // --- 右側物件面板：每個已選檔案一張卡片（alpha、color） ---
@@ -356,6 +363,17 @@ async function syncSelection(): Promise<void> {
           return;
         }
         loaded.set(f, built);
+        // 沒有 label 的模型：自動配一個還沒被其他已載入模型用過的顏色（模型比色票多時才重複）
+        if (built.unlabeled && !autoColored.has(f)) {
+          autoColored.add(f);
+          const p = getProps(f);
+          if (p.color === null) {
+            p.color = pickAutoColor([...loaded].filter(([k]) => k !== f).map(([k]) => getProps(k).color));
+            // 檔案自帶顏色（.ply / .obj 頂點色）→ 只輕輕疊上 0.2 保留原色；沒有顏色 → 0.6（同預設）
+            p.mix = built.fileHasColors ? 0.2 : 0.6;
+            renderPanel(); // 卡片已先建好，重建才會顯示選中的色票
+          }
+        }
         applyProps(built.mesh, built.orig, getProps(f));
         failed.delete(f);
         scene.add(built.mesh);

@@ -18,6 +18,21 @@ export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6 }
 /** 可選的顏色：Apple system colors（--system<名稱>） */
 export const PALETTE = ['Red', 'Orange', 'Yellow', 'Green', 'Teal', 'Blue', 'Indigo', 'Purple', 'Pink', 'Gray'] as const;
 
+/** 自動配色用：排除 Gray（跟「不確定」的灰色太像，分不出來） */
+export const AUTO_PALETTE = PALETTE.filter((n) => n !== 'Gray').map((n) => `--system${n}`);
+
+/**
+ * 為沒有 label 的新模型挑一個顏色：優先挑 `used`（目前畫面上各模型已用的顏色）裡沒出現過的；
+ * 同時載入的模型比色票還多時，顏色才重複，這時挑被用最少次的（平均分攤）。
+ */
+export function pickAutoColor(used: Iterable<string | null>): string {
+  const cnt = new Map<string, number>(AUTO_PALETTE.map((c) => [c, 0]));
+  for (const c of used) if (c && cnt.has(c)) cnt.set(c, cnt.get(c)! + 1);
+  let best = AUTO_PALETTE[0];
+  for (const c of AUTO_PALETTE) if (cnt.get(c)! < cnt.get(best)!) best = c; // 嚴格小於 → 同分取色票順序在前者
+  return best;
+}
+
 let probe: HTMLElement | null = null;
 
 /** 把 CSS 變數（隨目前主題）解析成 three.js 的顏色。 */

@@ -18,6 +18,8 @@ export interface LobjData {
   normals: Float32Array | null;
   colors: Float32Array | null;
   labels: Int8Array | null;
+  /** 檔案本身是否帶顏色（後端補的不算；由 X-Lobj-File-Colors 標頭得知，解析 bytes 時預設 true） */
+  fileHasColors?: boolean;
   tex2d: Float32Array | null;
   triangles: Uint32Array; // 長度 nTri*3
   texId: Uint32Array | null;
@@ -107,5 +109,7 @@ export async function fetchLobj(name: string, jaw?: 'upper' | 'lower'): Promise<
   const q = jaw ? `?jaw=${jaw}` : '';
   const r = await fetch(`/api/lobj/${name.split("/").map(encodeURIComponent).join("/")}${q}`);
   if (!r.ok) throw new Error(await r.text());
-  return parseLobj(await r.arrayBuffer());
+  const data = parseLobj(await r.arrayBuffer());
+  data.fileHasColors = r.headers.get('X-Lobj-File-Colors') !== '0';
+  return data;
 }
