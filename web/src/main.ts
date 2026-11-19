@@ -27,9 +27,13 @@ if (!isWebGPU && !window.isSecureContext) {
 // --- scene ---
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
-camera.up.set(0, 0, 1); // CAD 資料多半 z 向上；必須在建立 OrbitControls 之前設定
-camera.position.set(4, -3, 2.5);
+const perspCamera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+perspCamera.up.set(0, 0, 1); // CAD 資料多半 z 向上；必須在建立 OrbitControls 之前設定
+perspCamera.position.set(4, -3, 2.5);
+const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 1000);
+orthoCamera.up.set(0, 0, 1);
+let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = perspCamera;
+let viewAspect = 1;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -468,10 +472,43 @@ function fitCamera(): void {
   const sphere = box.getBoundingSphere(new THREE.Sphere());
   const radius = Math.max(sphere.radius, 1e-6);
   controls.target.copy(sphere.center);
-  camera.near = radius / 100;
-  camera.far = radius * 100;
+  for (const c of [perspCamera, orthoCamera]) {
+    c.near = radius / 100;
+    c.far = radius * 100;
+  }
   camera.position.copy(sphere.center).add(new THREE.Vector3(0, -radius * 2.6, radius * 0.6));
+  camera.zoom = 1;
+  updateOrthoFrustum();
   camera.updateProjectionMatrix();
+  controls.update();
+}
+
+/** 正交相機的可視範圍：與透視相機在目標點距離處的視野等大，切換時畫面大小不跳動。 */
+function updateOrthoFrustum(): void {
+  const d = Math.max(camera.position.distanceTo(controls.target), 1e-6);
+  const halfH = d * Math.tan(THREE.MathUtils.degToRad(perspCamera.fov / 2));
+  orthoCamera.left = -halfH * viewAspect;
+  orthoCamera.right = halfH * viewAspect;
+  orthoCamera.top = halfH;
+  orthoCamera.bottom = -halfH;
+}
+
+function setOrthographic(on: boolean): void {
+  const from = camera;
+  const to = on ? orthoCamera : perspCamera;
+  if (from === to) return;
+  const dir = new THREE.Vector3().subVectors(from.position, controls.target);
+  // 正交以 zoom 縮放；換回透視時把 zoom 換算成距離，畫面大小不變
+  const dist = on ? dir.length() : dir.length() / Math.max(from.zoom, 1e-6);
+  to.position.copy(controls.target).addScaledVector(dir.normalize(), dist);
+  to.quaternion.copy(from.quaternion);
+  to.near = from.near;
+  to.far = from.far;
+  to.zoom = 1;
+  camera = to;
+  controls.object = to as THREE.PerspectiveCamera; // OrbitControls 型別只標 Perspective，實際兩者皆可
+  if (on) updateOrthoFrustum();
+  to.updateProjectionMatrix();
   controls.update();
 }
 
@@ -762,8 +799,11 @@ new ResizeObserver(() => {
   const h = container.clientHeight;
   hasSize = w > 0 && h > 0;
   if (!hasSize) return;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  viewAspect = w / h;
+  perspCamera.aspect = viewAspect;
+  perspCamera.updateProjectionMatrix();
+  updateOrthoFrustum();
+  orthoCamera.updateProjectionMatrix();
   renderer.setSize(w, h);
 }).observe(container);
 
@@ -793,6 +833,11 @@ gridEl.addEventListener('change', () => {
     /* 忽略 */
   }
 });
+
+// --- 正交投影 checkbox（預設關閉，不記住）---
+const orthoEl = document.getElementById('ortho-toggle') as HTMLInputElement;
+orthoEl.checked = false;
+orthoEl.addEventListener('change', () => setOrthographic(orthoEl.checked));
 
 // --- 光源選單（記住選擇）---
 const lightEl = document.getElementById('light') as HTMLSelectElement;

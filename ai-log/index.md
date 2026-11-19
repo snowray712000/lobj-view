@@ -42,3 +42,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: stats.rs, sysinfo, /api/stats, ConnectInfo, peers, tab_guard, nvidia-smi, CREATE_NO_WINDOW, status3
 - [2026/s4/261119o_self_update_v181.md](2026/s4/261119o_self_update_v181.md) — 1.8.1: self-update — UI "檢查更新" button / `lobj-view update` fetch the latest GitHub Release, verify (size, sha256 digest, `--version`), `self_replace` the exe, and restart on the same port (Unix exec, Windows spawn + wait-for-parent-pid).
   Keywords: update, self_replace, ureq, /api/update, releases/latest, digest, LOBJ_VIEW_TARGET, LOBJ_VIEW_RESTART, restart_requested, relaunch, bind_retry, remember_exe, guard_with, --allow-remote-update, ALLOW_REMOTE, 檢查更新
+- [2026/s4/261119p_orthographic_v182.md](2026/s4/261119p_orthographic_v182.md) — 1.8.2: "正交投影" checkbox in the top-left status box (default off); swaps between perspective and orthographic cameras keeping apparent size.
+  Keywords: orthographic, OrthographicCamera, OrbitControls, zoom, updateOrthoFrustum, setOrthographic, 1.8.2
