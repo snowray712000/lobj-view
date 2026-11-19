@@ -3,6 +3,7 @@
 // 所以切換淺色 / 深色主題後重新套用，3D 模型的色調也會跟著主題走。
 
 import * as THREE from 'three/webgpu';
+import { colorCurvature, computeCurvature, DEFAULT_CLIP, smoothNormals, type Curvature, type CurvColoring, type CurvMode } from './curvature';
 
 export interface ObjProps {
   /** 0–1，預設 1（不透明） */
@@ -15,9 +16,44 @@ export interface ObjProps {
   wire: boolean;
   /** 是否顯示每個頂點的法向量（藍色短線） */
   normal: boolean;
+  /** 是否以曲率上色（取代 color / 原色） */
+  curv: boolean;
+  /** 曲率模式：signed = 凸凹（紅凸藍凹）；max / min = 相鄰邊 |κ| 的最大 / 最小（同 Python 版） */
+  curvMode: CurvMode;
+  /** 各曲率模式的截斷上界百分位（50–100），各模式分開記 */
+  curvClip: Record<CurvMode, number>;
+  /** 算曲率前先把法向量平滑幾次（0 = 不平滑）；只影響曲率，不改顯示的模型與 normal 線 */
+  curvSmooth: number;
 }
 
-export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6, wire: false, normal: false });
+export const defaultProps = (): ObjProps => ({
+  alpha: 1, color: null, mix: 0.6, wire: false, normal: false, curv: false, curvMode: 'signed', curvClip: { ...DEFAULT_CLIP }, curvSmooth: 0,
+});
+
+/**
+ * 取得指定模式、截斷百分位、平滑次數的曲率上色結果；圖例也用這個拿範圍。
+ * 曲率依平滑次數快取在 mesh.userData.curvBySmooth（切回之前的次數不必重算）；
+ * 起點是模型本身的法向量（檔案自帶或 computeVertexNormals），smooth > 0 時先 smoothNormals 再算。
+ */
+export function curvatureColoring(mesh: THREE.Mesh, mode: CurvMode, clip: number, smooth: number): CurvColoring {
+  const ud = mesh.userData;
+  const bySmooth = (ud.curvBySmooth ??= new Map<number, Curvature>()) as Map<number, Curvature>;
+  let curv = bySmooth.get(smooth);
+  if (!curv) {
+    const g = mesh.geometry;
+    const pos = (g.getAttribute('position') as THREE.BufferAttribute).array;
+    const tri = g.getIndex()!.array;
+    const nor = (g.getAttribute('normal') as THREE.BufferAttribute).array;
+    curv = computeCurvature(pos, smooth > 0 ? smoothNormals(nor, tri, smooth) : nor, tri);
+    bySmooth.set(smooth, curv);
+  }
+  const key = `${smooth}:${mode}:${clip}`;
+  if (ud.curvKey !== key) {
+    ud.curvKey = key;
+    ud.curvColoring = colorCurvature(curv, mode, clip);
+  }
+  return ud.curvColoring as CurvColoring;
+}
 
 /** 可選的顏色：Apple system colors（--system<名稱>） */
 export const PALETTE = ['Red', 'Orange', 'Yellow', 'Green', 'Teal', 'Blue', 'Indigo', 'Purple', 'Pink', 'Gray'] as const;
@@ -121,7 +157,9 @@ export function applyProps(mesh: THREE.Mesh, orig: Float32Array, p: ObjProps): v
 
   const attr = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
   const arr = attr.array as Float32Array;
-  if (!p.color) {
+  if (p.curv) {
+    arr.set(curvatureColoring(mesh, p.curvMode, p.curvClip[p.curvMode], p.curvSmooth).colors);
+  } else if (!p.color) {
     arr.set(orig);
   } else {
     const t = resolveCssColor(p.color);

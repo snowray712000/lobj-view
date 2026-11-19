@@ -363,3 +363,33 @@ body {
   color: var(--secondaryLabel);
   margin-bottom: 2px;
 }
+
+.card select.curv-mode {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.card select.curv-mode[hidden],
+.curv-legend[hidden] {
+  display: none;
+}
+
+.curv-legend {
+  margin: 0 0 4px calc(3.2em + 6px);
+}
+
+.curv-legend .bar {
+  height: 8px;
+  border-radius: 4px;
+  outline: 1px solid var(--separator);
+}
+
+.curv-legend .ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondaryLabel);
+}

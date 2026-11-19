@@ -3,7 +3,8 @@ import './style.css';
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fetchLobj, labelCounts, listLobj, type LobjData } from './lobj';
-import { applyProps, defaultProps, PALETTE, pickAutoColor, resolveCssColor, type ObjProps } from './props';
+import { applyProps, curvatureColoring, defaultProps, PALETTE, pickAutoColor, resolveCssColor, type ObjProps } from './props';
+import { DEFAULT_CLIP, gradientCss, type CurvMode } from './curvature';
 
 const container = document.getElementById('viewport')!;
 const backendEl = document.getElementById('backend')!;
@@ -289,6 +290,114 @@ function buildCard(f: string): HTMLElement {
   normRow.append(normName, normBox);
   card.appendChild(normRow);
 
+  // 曲率：勾選後以曲率上色（取代 color），旁邊選模式；下方顯示色階圖例
+  const curvRow = document.createElement('label');
+  curvRow.className = 'row';
+  const curvName = document.createElement('span');
+  curvName.textContent = 'curv';
+  const curvBox = document.createElement('input');
+  curvBox.type = 'checkbox';
+  curvBox.checked = p.curv;
+  curvBox.title = '以曲率上色（Normal Variation，沿邊計算），會取代 color';
+  const curvSel = document.createElement('select');
+  curvSel.className = 'curv-mode';
+  for (const [v, t, tip] of [
+    ['signed', '凸凹', '相鄰邊法曲率的平均（帶正負號）：紅 = 凸（牙尖、牙脊），藍 = 凹（窩溝、牙齦線）'],
+    ['max', 'max |κ|', '相鄰邊 |κ| 的最大值：邊緣、稜線最亮'],
+    ['min', 'min |κ|', '相鄰邊 |κ| 的最小值：各方向都彎的地方（如牙尖頂）才亮'],
+  ] as const) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = t;
+    o.title = tip;
+    curvSel.appendChild(o);
+  }
+  curvSel.value = p.curvMode;
+  const legend = document.createElement('div');
+  legend.className = 'curv-legend';
+  legend.dataset.path = f;
+  // 截斷：上界百分位（50–100），各模式分開記；拖動時即時重新上色（排序已快取，只重算顏色）
+  const clipRow = document.createElement('label');
+  clipRow.className = 'row';
+  const clipName = document.createElement('span');
+  clipName.textContent = '截斷';
+  const clipInput = document.createElement('input');
+  clipInput.type = 'range';
+  clipInput.min = '50';
+  clipInput.max = '100';
+  clipInput.step = '0.5';
+  const clipNum = document.createElement('span');
+  clipNum.className = 'num';
+  const showClip = () => {
+    const v = p.curvClip[p.curvMode];
+    clipInput.value = String(v);
+    clipNum.textContent = `p${v}`;
+    clipRow.title =
+      p.curvMode === 'signed'
+        ? `色階範圍 = ±|κ| 的第 ${v} 百分位；越小對比越強（細微凹凸也上色），越大越不受雜訊極值影響`
+        : `色階範圍 = 第 ${Math.min(1, 100 - v)}–${v} 百分位；99.5 即 Python clip_percentile 的設定`;
+  };
+  clipInput.addEventListener('input', () => {
+    p.curvClip[p.curvMode] = Number(clipInput.value);
+    showClip();
+    updateProps(f);
+    renderLegend(legend);
+  });
+  clipInput.addEventListener('dblclick', () => {
+    p.curvClip[p.curvMode] = DEFAULT_CLIP[p.curvMode];
+    showClip();
+    updateProps(f);
+    renderLegend(legend);
+  });
+  clipRow.append(clipName, clipInput, clipNum);
+
+  // 平滑：算曲率前先把法向量平滑幾次，壓掉掃描雜訊；放開滑鼠（change）才重算，拖動中只更新數字
+  const smoothRow = document.createElement('label');
+  smoothRow.className = 'row';
+  smoothRow.title = '算曲率前先把法向量與相鄰頂點平均幾次（頂點位置不動），壓掉掃描雜訊、保留較大尺度的凹凸；只影響曲率顏色。0 = 不平滑';
+  const smoothName = document.createElement('span');
+  smoothName.textContent = '平滑';
+  const smoothInput = document.createElement('input');
+  smoothInput.type = 'range';
+  smoothInput.min = '0';
+  smoothInput.max = '20';
+  smoothInput.step = '1';
+  smoothInput.value = String(p.curvSmooth);
+  const smoothNum = document.createElement('span');
+  smoothNum.className = 'num';
+  const showSmooth = (v: number) => (smoothNum.textContent = v ? `×${v}` : '關');
+  showSmooth(p.curvSmooth);
+  smoothInput.addEventListener('input', () => showSmooth(Number(smoothInput.value)));
+  smoothInput.addEventListener('change', () => {
+    p.curvSmooth = Number(smoothInput.value);
+    updateProps(f);
+    renderLegend(legend);
+  });
+  smoothRow.append(smoothName, smoothInput, smoothNum);
+
+  const refreshCurv = () => {
+    curvSel.hidden = !p.curv;
+    legend.hidden = !p.curv;
+    clipRow.hidden = !p.curv;
+    smoothRow.hidden = !p.curv;
+    showClip();
+    curvSel.title = curvSel.selectedOptions[0]?.title ?? '';
+    renderLegend(legend);
+  };
+  curvBox.addEventListener('change', () => {
+    p.curv = curvBox.checked;
+    updateProps(f);
+    refreshCurv();
+  });
+  curvSel.addEventListener('change', () => {
+    p.curvMode = curvSel.value as CurvMode;
+    updateProps(f);
+    refreshCurv();
+  });
+  curvRow.append(curvName, curvBox, curvSel);
+  card.append(curvRow, smoothRow, clipRow, legend);
+  refreshCurv();
+
   // color：第一格「原色」= 不設定
   const swatches = document.createElement('div');
   swatches.className = 'swatches';
@@ -336,6 +445,9 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 function disposeMesh(mesh: THREE.Mesh): void {
   scene.remove(mesh);
+  delete mesh.userData.curvBySmooth; // 曲率快取（純 JS 陣列，交給 GC）
+  delete mesh.userData.curvColoring;
+  delete mesh.userData.curvKey;
   for (const key of ['wire', 'normals']) {
     const ls = mesh.userData[key] as THREE.LineSegments | undefined;
     if (ls) {
@@ -363,8 +475,46 @@ function fitCamera(): void {
   controls.update();
 }
 
+const fmtK = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(2));
+
+/** 曲率色階圖例：色條 + 兩端（signed 時含中間 0）的 κ 值；κ 單位為 1/模型單位，括號內為對應曲率半徑。 */
+function renderLegend(el: HTMLElement): void {
+  const f = el.dataset.path!;
+  const p = getProps(f);
+  const l = loaded.get(f);
+  el.replaceChildren();
+  if (!p.curv) return;
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  bar.style.background = gradientCss(p.curvMode === 'signed' ? 'div' : 'seq');
+  const ticks = document.createElement('div');
+  ticks.className = 'ticks';
+  const tick = (t: string) => {
+    const s = document.createElement('span');
+    s.textContent = t;
+    ticks.appendChild(s);
+  };
+  if (!l) {
+    tick('載入後計算…');
+  } else {
+    const { lo, hi } = curvatureColoring(l.mesh, p.curvMode, p.curvClip[p.curvMode], p.curvSmooth);
+    if (p.curvMode === 'signed') {
+      tick(`凹 ${fmtK(lo)}`);
+      tick('0');
+      tick(`凸 +${fmtK(hi)}`);
+      el.title = `κ 單位 1/mm；±${fmtK(hi)} ≈ 曲率半徑 ${fmtK(1 / hi)} mm（|κ| ${p.curvClip.signed} 百分位截斷）`;
+    } else {
+      tick(fmtK(lo));
+      tick(fmtK(hi));
+      el.title = `κ 單位 1/mm；${Math.min(1, 100 - p.curvClip[p.curvMode])}%–${p.curvClip[p.curvMode]}% 百分位截斷後上色`;
+    }
+  }
+  el.append(bar, ticks);
+}
+
 /** 更新右側各卡片的資訊（頂點、三角形、labels；載入中 / 失敗）。 */
 function renderInfo(): void {
+  for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.curv-legend')) renderLegend(el);
   for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.card-info')) {
     const f = el.dataset.path!;
     const l = loaded.get(f);

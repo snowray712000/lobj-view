@@ -2,6 +2,18 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.4.6
+- 新功能: curv 勾選後多一列「平滑」滑桿（關、×1–×20），算曲率前先把法向量與相鄰頂點平均幾次，壓掉口掃雜訊、保留牙齦線 / 牙尖這類較大尺度的凹凸；只影響曲率顏色，模型本身與 normal 線不變。放開滑桿才重算（18 萬頂點 ×5 約 0.8 秒），算過的次數會記住，切回去不必再算
+- 工程師筆記: `curvature.ts` 的 `smoothNormals`（位置不動，只平滑法向量）；曾試先 Laplacian / Taubin 平滑頂點位置，但頂點沿切向漂移讓三角形變細長，|e| 變小反而讓 p99 從 6.1 升到 6.9，故改平滑法向量（×10 後 p99 6.1 → 1.4、p90 1.68 → 0.67；球面 ×10 仍為 1/R）。`ObjProps.curvSmooth`，曲率依次數快取於 `mesh.userData.curvBySmooth` #curvature #smoothing #normals
+
+### 1.4.5
+- 新功能: curv 勾選後多一列「截斷」滑桿（p50–p100），即時調整曲率色階範圍：凸凹模式 = ±|κ| 的該百分位，越小對比越強；max / min 模式 = 第 min(1, 100−p)–p 百分位，p99.5 即 Python 的 0.5%–99.5%。各模式分開記（預設凸凹 p90、max / min p95），雙擊滑桿回預設
+- 工程師筆記: `curvature.ts` 快取各模式排序後的陣列（`Curvature.sorted`），拖滑桿只查表 + 重算顏色；`ObjProps.curvClip`、`DEFAULT_CLIP`；`curvatureColoring` 改以 `mode:clip` 為快取鍵 #curvature #percentile #slider
+
+### 1.4.4
+- 新功能: 右側物件卡片新增 curv 核取方塊，勾選後以曲率上色（取代 color），旁邊可選模式：凸凹（預設，紅 = 凸如牙尖 / 牙齒邊緣，藍 = 凹如牙齦線 / 窩溝，灰 = 平）、max |κ|、min |κ|；下方顯示色階與 κ 範圍（單位 1/mm，滑鼠移上去看對應曲率半徑）
+- 工程師筆記: 新增 `web/src/curvature.ts`，移植 AppLabelTooth `compute_vertex_curvature_normal_variation_edge.py`（κ_edge = Δn·e / |e|²，每頂點取相鄰邊 |κ| 的 max / min），另加帶正負號的平均（signed）；球面測試得 κ = 1/R。不做 Python demo 的除標準差尺度正規化（保留物理單位）；口掃 mesh 的 κ 分佈尾巴很長，截斷改為 signed 取 |κ| 90 百分位、max / min 取 1%–95%（Python 為 0.5%–99.5%）。第一次勾選才計算並快取於 `mesh.userData.curv` #curvature #normal-variation #viridis
+
 ### 1.4.3
 - 新功能: 右側物件卡片新增 normal 核取方塊，勾選後在每個頂點畫出法向量（藍色短線，長度為模型外接球半徑的 3%）；沒有法向量的檔案（.stl / .obj / .ply）以計算出的頂點法向量顯示
 - 工程師筆記: `props.ts` 的 `ObjProps.normal` 與 `buildNormalLines`（每頂點一段 `LineSegments`，存於 `mesh.userData.normals`，第一次勾選才建立，`disposeMesh` 一併釋放）#normals #LineSegments
