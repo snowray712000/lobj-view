@@ -107,6 +107,13 @@ body {
   padding: 0 6px;
 }
 
+.ver-detail {
+  margin-left: auto;
+  margin-right: 12px;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
 #versions-body {
   overflow-y: auto;
   padding: 8px 18px 16px;

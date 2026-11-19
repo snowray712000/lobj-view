@@ -548,10 +548,29 @@ fetch('/api/version')
   .catch(() => (verEl.textContent = 'versions'));
 
 /** Versions.md 的簡易呈現：`### 版本` 為標題，`- ` 為項目，其餘為段落。 */
+const detailEl = document.getElementById('versions-detail') as HTMLInputElement;
+const DETAIL_KEY = 'lobj-view-versions-detail';
+let versionsMd = '';
+try {
+  detailEl.checked = localStorage.getItem(DETAIL_KEY) === '1';
+} catch {
+  /* 忽略 */
+}
+
+/** 概要版本：第 2 碼為奇數且第 3 碼為 1（1.1.1、1.3.1、1.5.1…）。 */
+function isReleaseVersion(v: string): boolean {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v);
+  return !!m && Number(m[2]) % 2 === 1 && Number(m[3]) === 1;
+}
+
 function renderVersions(md: string): void {
   versionsBodyEl.replaceChildren();
   let ul: HTMLUListElement | null = null;
+  let show = true; // 第一個版本標題之前的說明一律顯示
   for (const line of md.split(/\r?\n/)) {
+    const hd = /^#{2,}\s*(.*)$/.exec(line);
+    if (hd) show = detailEl.checked || isReleaseVersion(hd[1]);
+    if (!show) continue;
     if (line.startsWith('- ')) {
       if (!ul) versionsBodyEl.appendChild((ul = document.createElement('ul')));
       const li = document.createElement('li');
@@ -578,10 +597,19 @@ verEl.addEventListener('click', async () => {
   try {
     const r = await fetch('/api/versions');
     if (!r.ok) throw new Error(String(r.status));
-    renderVersions(await r.text());
+    versionsMd = await r.text();
+    renderVersions(versionsMd);
   } catch (e) {
     versionsBodyEl.textContent = `無法取得版本紀錄：${e instanceof Error ? e.message : e}`;
   }
+});
+detailEl.addEventListener('change', () => {
+  try {
+    localStorage.setItem(DETAIL_KEY, detailEl.checked ? '1' : '0');
+  } catch {
+    /* 忽略 */
+  }
+  if (versionsMd) renderVersions(versionsMd);
 });
 document.getElementById('versions-close')!.addEventListener('click', () => (versionsEl.hidden = true));
 window.addEventListener('keydown', (e) => {
