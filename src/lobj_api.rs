@@ -12,6 +12,7 @@
 //! 所有路徑都會 canonicalize 後確認仍在 `--dir` 之內（含 `..`、符號連結），超出一律拒絕。
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -19,21 +20,39 @@ use axum::{
     Router,
     extract::{Path as UrlPath, Query, State},
     http::{StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::get,
 };
 use lobj::colors::{self, Palette};
 use lobj::{Jaw, LobjError};
+use tokio_stream::{Stream, StreamExt, wrappers::WatchStream};
 
-pub fn router(dir: PathBuf) -> Router {
-    let root = std::fs::canonicalize(&dir).unwrap_or(dir);
+use crate::instance::Shared;
+
+/// 根資料夾由 `Shared` 持有，執行中可被切換（見 `instance.rs`），所以每個請求都重新讀取。
+pub fn router(shared: Arc<Shared>) -> Router {
     Router::new()
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
-        .with_state(Arc::new(root))
+        .route("/api/events", get(events))
+        .with_state(shared)
 }
 
-fn is_lobj_name(name: &str) -> bool {
+/// SSE：連上時先送目前的開檔事件，之後每次有人用 `lobj-view <檔案>` 開檔就再送一次。
+/// 連線存在即代表「有網頁開著」，此時就不會再自動開新的瀏覽器分頁。
+async fn events(State(shared): State<Arc<Shared>>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let guard = shared.tab_guard();
+    let stream = WatchStream::new(shared.subscribe()).map(move |ev| {
+        let _keep = &guard;
+        Ok(Event::default().data(format!("{{\"seq\":{},\"path\":{}}}", ev.seq, json_string(&ev.path))))
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+pub fn is_lobj_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".lobj") || lower.ends_with(".lobj2") || lower.ends_with(".stl") || lower.ends_with(".obj") || lower.ends_with(".ply")
 }
@@ -118,7 +137,8 @@ fn list_dir(root: &Path, input: &str) -> Result<Listing, ApiErr> {
     Ok(Listing { path: rel_string(root, &dir), dirs, files, selected })
 }
 
-async fn list(State(root): State<Arc<PathBuf>>, Query(q): Query<HashMap<String, String>>) -> Response {
+async fn list(State(shared): State<Arc<Shared>>, Query(q): Query<HashMap<String, String>>) -> Response {
+    let root = shared.root();
     let input = q.get("path").cloned().unwrap_or_default();
     match tokio::task::spawn_blocking(move || list_dir(&root, &input)).await {
         Ok(Ok(l)) => {
@@ -146,7 +166,7 @@ async fn list(State(root): State<Arc<PathBuf>>, Query(q): Query<HashMap<String, 
 }
 
 async fn fetch(
-    State(root): State<Arc<PathBuf>>,
+    State(shared): State<Arc<Shared>>,
     UrlPath(name): UrlPath<String>,
     Query(q): Query<HashMap<String, String>>,
 ) -> Response {
@@ -159,6 +179,7 @@ async fn fetch(
         Some(_) => return (StatusCode::BAD_REQUEST, "jaw 只能是 upper 或 lower").into_response(),
         None => None,
     };
+    let root = shared.root();
     let path = match resolve(&root, &name) {
         Ok(p) if p.is_file() => p,
         Ok(_) => return (StatusCode::BAD_REQUEST, "不是檔案").into_response(),

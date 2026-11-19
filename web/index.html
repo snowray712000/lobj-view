@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
   </head>
   <body>
     <div id="viewport"></div>
@@ -28,6 +29,7 @@
             <option value="hc-light">高對比淺色</option>
             <option value="hc-dark">高對比深色</option>
           </select>
+          · <button id="assoc-open" type="button" title="把 lobj-view 設成副檔名的開啟程式（雙擊檔案即開啟）">預設程式…</button>
         </div>
       </div>
       <div id="browser" class="box">
@@ -50,6 +52,10 @@
     <div id="versions" hidden>
       <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> 細節</label><button id="versions-close" type="button">✕</button></div>
       <div id="versions-body"></div>
+    </div>
+    <div id="assoc" hidden>
+      <div class="dlg-head"><b>預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>
+      <div id="assoc-body"></div>
     </div>
     <aside id="panel">
       <button id="panel-toggle" type="button" aria-expanded="true">物件 (0)</button>

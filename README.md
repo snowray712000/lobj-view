@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 1.2.1：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
+> 目前版本 1.2.4：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
 
 ## 安裝
 
@@ -46,6 +46,8 @@ lobj-view
 | `--host <IP>` | 監聽位址，預設 `127.0.0.1` |
 | `-p, --port <N>` | 偏好的 port，預設 8080 |
 | `-d, --dir <資料夾>` | 提供 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply` 的資料夾（可瀏覽其子資料夾，但不能超出此資料夾），預設目前資料夾 |
+| `[PATH]` | 要開啟的檔案或資料夾；已有執行中的 lobj-view 就交給它，否則啟動並自動開瀏覽器（見「單一實例」） |
+| `--new` / `--no-browser` | 另起獨立實例 / 帶 PATH 時不自動開瀏覽器 |
 | `--http` / `--https` | 強制使用 HTTP / HTTPS（見下） |
 | `--cert <pem> --key <pem>` | 自備憑證 |
 | `--san <名稱或IP>` | 額外寫入憑證的名稱（可重複） |
@@ -66,6 +68,35 @@ lobj-view --dir path/to/models
 - `.lobj2` 的 label 是 FDI；舊 `.lobj` 是 arch_index，需要知道上顎或下顎。檔名含 `upper` / `lower` 會自動判斷，否則請用 jaw 選單指定。
 - 檔案若沒有頂點顏色，後端會依 label 補上。
 - API（前後端以 `.lobj` 二進位串流傳遞，labels 一律 FDI）：`GET /api/lobj`（列表）、`GET /api/lobj/<檔名>[?jaw=upper|lower]`。
+
+## 單一實例（開檔交給執行中的 lobj-view）
+
+```bash
+lobj-view path/to/model.lobj
+```
+
+- 已有 lobj-view 在跑：把這個檔案交給它（根資料夾切到該檔所在的資料夾並選取，網頁自動跳過去），這個程序隨即結束；若沒有任何網頁連著，會自動開瀏覽器。
+- 沒有：啟動伺服器，根資料夾為該檔所在的資料夾，並自動開瀏覽器（`--no-browser` 可關）。
+- `--new` 另起獨立實例。交接走只聽 `127.0.0.1` 的 IPC 加 token（`<data_local_dir>/lobj-view/instance.txt`），不經 HTTP，區網上的人無法切換你的資料夾。
+- 同時開多個檔案（例如檔案總管多選）時，目前只會顯示最後一個。
+
+### 雙擊檔案就開啟（Windows）
+
+```bash
+lobj-view register            # .lobj .lobj2
+lobj-view register --ext stl,obj
+lobj-view register --all
+lobj-view status              # 各副檔名目前由誰開啟
+lobj-view unregister
+```
+
+也可以在網頁左側狀態列按「預設程式…」勾選後註冊。只寫目前使用者的登錄（`HKCU`），不需要系統管理員。
+
+- `.lobj` / `.lobj2` 若沒有其他程式佔用，會直接成為預設。
+- `.stl` / `.ply` / `.obj` 通常已有預設程式，Windows 10 不允許程式自行覆蓋，只會註冊成「開啟方式」候選；請到「設定 > 預設應用程式」自己指定。
+- 網頁的變更功能只在監聽本機位址時可用（`--host 0.0.0.0` 時停用），CLI 不受影響。
+- Linux / macOS 尚未支援。
+- 檔案圖示：Windows 的 exe 內嵌 `assets/lobj-view.ico`（多尺寸；`assets/lobj-view.png` 為大圖），註冊後 `.lobj` 等檔案會顯示它；若沒立刻更新，重開檔案總管或清除圖示快取。
 
 ## 為什麼需要 HTTPS
 

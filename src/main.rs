@@ -1,3 +1,5 @@
+mod assoc;
+mod instance;
 mod lobj_api;
 mod tls;
 
@@ -27,10 +29,23 @@ struct Assets;
 const PORT_SEARCH_RANGE: u16 = 50;
 
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version, about, args_conflicts_with_subcommands = true)]
 struct Args {
     #[command(subcommand)]
     cmd: Option<Cmd>,
+
+    /// 要開啟的檔案或資料夾（例如在檔案總管雙擊 .lobj）。
+    /// 若已有執行中的 lobj-view，就交給它（切換資料夾並選取該檔）後結束；
+    /// 否則啟動伺服器，根資料夾設為該檔所在的資料夾，並自動開瀏覽器。會覆蓋 --dir。
+    path: Option<PathBuf>,
+
+    /// 即使已有執行中的 lobj-view 也另起一個獨立實例（不轉交、也不登記為預設實例）。
+    #[arg(long)]
+    new: bool,
+
+    /// 帶 PATH 啟動時，不自動開瀏覽器。
+    #[arg(long)]
+    no_browser: bool,
 
     /// 監聽位址。預設只聽本機；0.0.0.0 會對外開放且沒有任何驗證。
     /// 非本機位址預設自動啟用 HTTPS（WebGPU 需要 secure context）。
@@ -68,6 +83,23 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// 把 lobj-view 註冊成副檔名的開啟程式（目前只支援 Windows；不需要系統管理員）。
+    /// 預設只處理 .lobj .lobj2；.stl .obj .ply 常被其他程式佔用，需以 --ext 明確指定。
+    Register {
+        /// 要處理的副檔名，逗號分隔（lobj,lobj2,stl,ply,obj）。
+        #[arg(long, value_delimiter = ',')]
+        ext: Vec<String>,
+        /// 全部五種副檔名。
+        #[arg(long, conflicts_with = "ext")]
+        all: bool,
+    },
+    /// 取消註冊（不指定 --ext 就是全部）。
+    Unregister {
+        #[arg(long, value_delimiter = ',')]
+        ext: Vec<String>,
+    },
+    /// 顯示各副檔名目前的關聯狀態。
+    Status,
     /// 產生本機 CA 與憑證，並顯示其他裝置該怎麼信任它。
     Trust {
         /// 同時把 CA 匯入這台機器的信任清單（Windows / macOS）。
@@ -83,9 +115,66 @@ enum Cmd {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    if let Some(Cmd::Trust { install, sans }) = args.cmd {
-        return run_trust(install, &sans);
+    match args.cmd {
+        Some(Cmd::Trust { install, sans }) => return run_trust(install, &sans),
+        Some(Cmd::Register { ext, all }) => {
+            let exts = if all {
+                assoc::ALL_EXTS.iter().map(|s| s.to_string()).collect()
+            } else if ext.is_empty() {
+                assoc::DEFAULT_EXTS.iter().map(|s| s.to_string()).collect()
+            } else {
+                assoc::normalize_exts(&ext).map_err(anyhow::Error::msg)?
+            };
+            let st = assoc::register(&exts).map_err(anyhow::Error::msg)?;
+            print!("{}", assoc::format_status(&st));
+            if st.exts.iter().any(|e| exts.contains(&e.ext) && !e.is_default) {
+                println!("
+尚未成為預設的副檔名，請到 Windows「設定 > 預設應用程式」指定 lobj-view（或對檔案按右鍵 > 開啟檔案 > 選擇其他應用程式）。");
+            }
+            return Ok(());
+        }
+        Some(Cmd::Unregister { ext }) => {
+            let exts = if ext.is_empty() {
+                assoc::ALL_EXTS.iter().map(|s| s.to_string()).collect()
+            } else {
+                assoc::normalize_exts(&ext).map_err(anyhow::Error::msg)?
+            };
+            let st = assoc::unregister(&exts).map_err(anyhow::Error::msg)?;
+            print!("{}", assoc::format_status(&st));
+            return Ok(());
+        }
+        Some(Cmd::Status) => {
+            print!("{}", assoc::format_status(&assoc::status().map_err(anyhow::Error::msg)?));
+            return Ok(());
+        }
+        None => {}
     }
+
+    // 帶檔案／資料夾：先試著交給執行中的實例，沒有才自己當伺服器
+    let mut dir = args.dir.clone();
+    let mut initial: Option<String> = None;
+    let mut lock = None;
+    if let Some(p) = &args.path {
+        let abs = std::path::absolute(p)?;
+        if !abs.exists() {
+            anyhow::bail!("找不到 {}", abs.display());
+        }
+        if !args.new {
+            match instance::claim(&abs) {
+                instance::Claim::Forwarded => {
+                    println!("已交給執行中的 lobj-view 開啟: {}", abs.display());
+                    return Ok(());
+                }
+                instance::Claim::Rejected(msg) => anyhow::bail!("{msg}"),
+                instance::Claim::Server(l) => lock = l,
+            }
+        }
+        let (d, sel) = instance::split_target(&std::fs::canonicalize(&abs)?).map_err(anyhow::Error::msg)?;
+        dir = d;
+        initial = Some(sel.unwrap_or_default());
+    }
+    let shared = instance::Shared::new(dir, initial);
+    shared.set_local_only(args.host.is_loopback());
 
     let use_tls = !args.http && (args.https || args.cert.is_some() || !args.host.is_loopback());
 
@@ -113,7 +202,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/version", get(|| async { env!("CARGO_PKG_VERSION") }))
         .route("/api/versions", get(|| async { include_str!("../doc/Versions.md") }))
         .route("/trust", get(trust_page))
-        .merge(lobj_api::router(args.dir.clone()));
+        .merge(lobj_api::router(shared.clone()))
+        .merge(assoc::router(shared.clone()));
     if let Some(pem) = ca_pem {
         app = app.route(
             "/ca.crt",
@@ -140,14 +230,47 @@ async fn main() -> anyhow::Result<()> {
     }
     print_urls(addr, material.as_ref());
 
-    match material {
-        Some(m) => {
-            let config = RustlsConfig::from_pem_file(&m.cert, &m.key).await?;
-            axum_server::from_tcp_rustls(listener.into_std()?, config)?
-                .serve(app.into_make_service())
-                .await?;
+    let scheme = if material.is_some() { "https" } else { "http" };
+    let host = if addr.ip().is_unspecified() || addr.ip().is_loopback() {
+        format!("localhost:{}", addr.port())
+    } else {
+        addr.to_string()
+    };
+    shared.set_url(format!("{scheme}://{host}"));
+
+    // 登記為預設實例（之後 `lobj-view <檔案>` 會交給它）；登記完成才釋放啟動鎖
+    let _registration = if args.new {
+        None
+    } else {
+        match instance::serve_ipc(shared.clone()).await {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!("警告: 無法登記為預設實例，之後開檔會另開新的: {e}");
+                None
+            }
         }
-        None => axum::serve(listener, app).await?,
+    };
+    drop(lock);
+    if args.path.is_some() && !args.no_browser {
+        shared.open_browser();
+    }
+
+    let serve = async {
+        match material {
+            Some(m) => {
+                let config = RustlsConfig::from_pem_file(&m.cert, &m.key).await?;
+                axum_server::from_tcp_rustls(listener.into_std()?, config)?
+                    .serve(app.into_make_service())
+                    .await?;
+            }
+            None => axum::serve(listener, app).await?,
+        }
+        anyhow::Ok(())
+    };
+    // Ctrl+C 時正常返回，讓登記檔被清掉
+    tokio::select! {
+        r = serve => r?,
+        _ = tokio::signal::ctrl_c() => {}
     }
     Ok(())
 }

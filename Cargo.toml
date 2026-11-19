@@ -1,11 +1,11 @@
 [package]
 name = "lobj-view"
-version = "1.2.1"
+version = "1.2.4"
 edition = "2024"
 description = "Web-based viewer for .lobj (labeled binary 3D object) files"
 # cargo install / cargo package 只帶這些檔案；web/dist 必須事先 build 好並一起發佈，
 # 安裝端就不需要 Node.js。
-include = ["src/**", "web/dist/**", "Cargo.toml", "README.md", "doc/Versions.md"]
+include = ["src/**", "build.rs", "assets/lobj-view.ico", "web/dist/**", "Cargo.toml", "README.md", "doc/Versions.md"]
 readme = "README.md"
 repository = "https://github.com/snowray712000/lobj-view"
 
@@ -33,3 +33,12 @@ rust-embed = "8.14.0"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 time = "0.3"
 tokio = { version = "1.54.1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+open = "5"
+serde_json = "1.0.154"
+
+[target."cfg(windows)".dependencies]
+winreg = "0.56.0"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

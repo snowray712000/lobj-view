@@ -458,7 +458,37 @@ jawEl.addEventListener('change', () => {
   failed.clear();
   if (selected.size) void syncSelection();
 });
-void browse('');
+
+/** 後端通知「有人用 `lobj-view <檔案>` 開檔」：根資料夾已換，舊的選取與模型都作廢，改顯示新的。 */
+async function openFromServer(path: string): Promise<void> {
+  selected.clear();
+  lastClicked = '';
+  for (const l of loaded.values()) disposeMesh(l.mesh);
+  loaded.clear();
+  failed.clear();
+  await browse(path);
+  await syncSelection(); // 開的是資料夾時 browse 不會觸發，確保畫面清空
+}
+
+// 連上時後端會先送目前狀態：seq=0 表示沒人指定過，照一般流程瀏覽根目錄
+let initialized = false;
+let lastOpenSeq = -1;
+const events = new EventSource('/api/events');
+events.onmessage = (ev) => {
+  const { seq, path } = JSON.parse(ev.data) as { seq: number; path: string };
+  if (seq === lastOpenSeq) return; // 斷線重連後同一個事件不重複處理
+  lastOpenSeq = seq;
+  initialized = true;
+  if (seq === 0) void browse('');
+  else void openFromServer(path);
+};
+// 事件通道連不上（例如被代理擋掉）時，仍照舊瀏覽根目錄
+setTimeout(() => {
+  if (!initialized) {
+    initialized = true;
+    void browse('');
+  }
+}, 2000);
 
 // 依容器實際大小調整；分頁隱藏或尺寸為 0 時不繪製（WebGPU 不允許 0 大小的 texture）
 let hasSize = false;
@@ -614,6 +644,123 @@ detailEl.addEventListener('change', () => {
 document.getElementById('versions-close')!.addEventListener('click', () => (versionsEl.hidden = true));
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') versionsEl.hidden = true;
+});
+
+// --- 預設開啟程式（副檔名關聯）---
+interface AssocExt {
+  ext: string;
+  registered: boolean;
+  isDefault: boolean;
+  current: string | null;
+}
+interface AssocStatus {
+  supported: boolean;
+  exe: string;
+  exts: AssocExt[];
+}
+const assocEl = document.getElementById('assoc')!;
+const assocBodyEl = document.getElementById('assoc-body')!;
+/** 預設勾選：這兩個幾乎不會與其他程式衝突；其餘需使用者自己勾。 */
+const assocChecked = new Set(['lobj', 'lobj2']);
+let assocMsg = '';
+
+/** 沒帶 X-Lobj-Requested 的 POST 後端一律拒絕（擋其他網站的 CSRF）。 */
+async function assocCall(url: string, body?: unknown): Promise<Response> {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+function assocState(e: AssocExt): string {
+  if (e.isDefault) return '✓ 預設';
+  if (e.registered) return e.current ? `已註冊（目前預設：${e.current}）` : '已註冊';
+  return e.current ? `未註冊（目前預設：${e.current}）` : '未註冊';
+}
+
+function renderAssoc(st: AssocStatus): void {
+  assocBodyEl.replaceChildren();
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', cls = ''): HTMLElementTagNameMap[K] => {
+    const n = document.createElement(tag);
+    n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  };
+  if (!st.supported) {
+    assocBodyEl.appendChild(el('p', '目前只支援 Windows 的副檔名關聯（Linux / macOS 尚未支援）。'));
+    return;
+  }
+  const table = el('table');
+  for (const e of st.exts) {
+    const tr = el('tr');
+    const td1 = el('td');
+    const label = el('label');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = assocChecked.has(e.ext);
+    cb.addEventListener('change', () => (cb.checked ? assocChecked.add(e.ext) : assocChecked.delete(e.ext)));
+    label.append(cb, ` .${e.ext}`);
+    td1.appendChild(label);
+    tr.append(td1, el('td', assocState(e)));
+    table.appendChild(tr);
+  }
+  const reg = el('button', '註冊所選');
+  reg.addEventListener('click', () => void assocAction('register'));
+  const unreg = el('button', '取消註冊所選');
+  unreg.addEventListener('click', () => void assocAction('unregister'));
+  const sys = el('button', '開啟 Windows 預設應用程式設定');
+  sys.addEventListener('click', () => void assocCall('/api/assoc/settings'));
+  assocBodyEl.append(
+    table,
+    reg,
+    unreg,
+    sys,
+    el('p', assocMsg, 'msg'),
+    el(
+      'p',
+      '註冊後，雙擊檔案會交給執行中的 lobj-view（沒有就啟動並開瀏覽器）。.lobj / .lobj2 沒有其他程式佔用時會直接成為預設；' +
+        '.stl / .ply / .obj 通常已有預設程式，Windows 不允許程式自行覆蓋，註冊後請按右邊按鈕，到系統設定自己指定。',
+      'hint',
+    ),
+    el('p', `執行檔：${st.exe}`, 'hint'),
+  );
+}
+
+async function loadAssoc(): Promise<void> {
+  try {
+    const r = await fetch('/api/assoc');
+    if (!r.ok) throw new Error(await r.text());
+    renderAssoc((await r.json()) as AssocStatus);
+  } catch (e) {
+    assocBodyEl.textContent = `無法取得關聯狀態：${e instanceof Error ? e.message : e}`;
+  }
+}
+
+async function assocAction(action: 'register' | 'unregister'): Promise<void> {
+  const exts = [...assocChecked];
+  if (!exts.length) {
+    assocMsg = '請至少勾選一個副檔名';
+  } else {
+    const r = await assocCall('/api/assoc', { action, exts });
+    if (r.ok) {
+      assocMsg = action === 'register' ? '已註冊' : '已取消註冊';
+      renderAssoc((await r.json()) as AssocStatus);
+      return;
+    }
+    assocMsg = `失敗：${await r.text()}`;
+  }
+  void loadAssoc();
+}
+
+document.getElementById('assoc-open')!.addEventListener('click', () => {
+  assocMsg = '';
+  assocEl.hidden = false;
+  void loadAssoc();
+});
+document.getElementById('assoc-close')!.addEventListener('click', () => (assocEl.hidden = true));
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') assocEl.hidden = true;
 });
 
 // --- 主題：空字串 = 跟隨系統（不設 data-theme），其餘為 apple-color-ios.css 的四種 ---
