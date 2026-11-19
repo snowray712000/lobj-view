@@ -9,7 +9,7 @@ apt 的 cargo 版本偏舊（且與 rustup 管理的版本互相衝突）。本�
 
 ```bash
 sudo apt update
-sudo apt install -y curl build-essential   # build-essential：之後若要從原始碼編譯才需要 C 編譯器
+sudo apt install -y curl
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
@@ -32,16 +32,10 @@ cargo --version
 
 binstall 的作用是**直接下載預編譯好的執行檔**，不用在本機編譯。
 
-方法 A：官方安裝腳本（下載預編譯的 binstall，快）
+使用官方安裝腳本，直接下載預編譯好的 binstall（不在本機編譯，因此不需要 C 編譯器）：
 
 ```bash
 curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-```
-
-方法 B：用 cargo 從原始碼編譯（慢，需要 build-essential）
-
-```bash
-cargo install cargo-binstall
 ```
 
 驗證：
@@ -53,11 +47,12 @@ cargo binstall --version
 ## 3. 用 binstall 安裝 lobj-view
 
 ```bash
-cargo binstall lobj-view --git https://github.com/snowray712000/lobj-view
+cargo binstall lobj-view --git https://github.com/snowray712000/lobj-view --disable-strategies compile
 ```
 
 - 執行檔會裝到 `~/.cargo/bin/lobj-view`。
-- 訊息中若看到從 `github.com/.../releases/download/...` 下載，代表用的是預編譯檔；若看到 compiling，代表找不到對應的 Release 檔而退回從原始碼編譯。
+- `--disable-strategies compile` 禁止退回從原始碼編譯，確保只用預編譯檔。
+- 訊息中應看到從 `github.com/.../releases/download/...` 下載；若出現找不到檔案的錯誤，代表該版本的 GitHub Release 尚未提供對應平台的預編譯檔，需先補上 Release，而不是在本機安裝編譯工具。
 - 升級：重新執行同一行指令（有新版時會覆蓋）。
 
 ## 4. 之後升級 Rust

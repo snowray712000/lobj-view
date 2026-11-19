@@ -2,6 +2,11 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.2.1
+- 優化: 新增 Windows 安裝文件 `doc/windows-install-rust-and-binstall.md`，全程使用 cmd 與預編譯的 rustup / cargo-binstall（不需 MSVC、不需管理員權限），對應 Ubuntu 版
+- 優化: Ubuntu 安裝文件改為只用預編譯檔：移除 `build-essential` 與 `cargo install cargo-binstall`，`cargo binstall` 加上 `--disable-strategies compile`
+- 工程師筆記: cmd 貼上多行指令可能把下一行黏在前一行參數後（例如 `-ydel`），文件中每個指令獨立成區塊；已有 rustup 的機器執行 `rustup-init -y` 會順帶更新曾加過的 target（如 `x86_64-unknown-linux-musl`）#docs #windows #cmd
+
 ### 1.1.1
 統整 0.0.1 ～ 0.0.11 的第一個正式發佈版，細節請看下方各舊版本。
 - 新功能: 用瀏覽器開啟網址即可檢視 3D 牙模：預設 WebGPU，不支援時自動改用 WebGL2；單一執行檔，免裝 Node.js（0.0.1）

@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 1.1.1：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
+> 目前版本 1.2.1：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
 
 ## 安裝
 
@@ -15,7 +15,9 @@ cargo binstall lobj-view --git https://github.com/snowray712000/lobj-view
 ```
 
 會下載對應平台的 Release 檔，裝到 `~/.cargo/bin`（Windows 為 `%USERPROFILE%\.cargo\bin`）。
-尚未安裝 cargo / cargo-binstall 的 Ubuntu 使用者見 [doc/ubuntu-install-rust-and-binstall.md](doc/ubuntu-install-rust-and-binstall.md)（不用 `apt install cargo`，改用 rustup）。
+尚未安裝 cargo / cargo-binstall 的使用者（皆使用預編譯檔，免編譯）：
+- Ubuntu 見 [doc/ubuntu-install-rust-and-binstall.md](doc/ubuntu-install-rust-and-binstall.md)（不用 `apt install cargo`，改用 rustup）。
+- Windows 見 [doc/windows-install-rust-and-binstall.md](doc/windows-install-rust-and-binstall.md)（全程 cmd 指令，不需 MSVC、不需管理員權限，ssh 到 Windows 也適用）。
 
 ### 方法 B：`cargo install`（從原始碼編譯）
 
