@@ -169,6 +169,9 @@ const failed = new Map<string, string>();
 const selected = new Set<string>();
 let syncToken = 0;
 
+let singleSided = false; // 預設雙面；由狀態列「單面」checkbox 控制
+const meshSide = () => (singleSided ? THREE.FrontSide : THREE.DoubleSide);
+
 function buildMesh(data: LobjData): Loaded {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(data.vertices, 3));
@@ -181,7 +184,7 @@ function buildMesh(data: LobjData): Loaded {
   geom.computeBoundingSphere();
   const mesh = new THREE.Mesh(
     geom,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: meshSide() }),
   );
   const counts = [...labelCounts(data.labels)].map(([l, n]) => `${l}:${n}`).join(' ');
   const info = `頂點 ${data.vertices.length / 3}、三角形 ${data.triangles.length / 3}` + (counts ? `\nlabels ${counts}` : '');
@@ -838,6 +841,18 @@ gridEl.addEventListener('change', () => {
 const orthoEl = document.getElementById('ortho-toggle') as HTMLInputElement;
 orthoEl.checked = false;
 orthoEl.addEventListener('change', () => setOrthographic(orthoEl.checked));
+
+// --- 單面 checkbox（預設關閉＝雙面；只繪正面，背面不畫）---
+const singleEl = document.getElementById('single-toggle') as HTMLInputElement;
+singleEl.checked = false;
+singleEl.addEventListener('change', () => {
+  singleSided = singleEl.checked;
+  for (const l of loaded.values()) {
+    const m = l.mesh.material as THREE.Material;
+    m.side = meshSide();
+    m.needsUpdate = true;
+  }
+});
 
 // --- 光源選單（記住選擇）---
 const lightEl = document.getElementById('light') as HTMLSelectElement;

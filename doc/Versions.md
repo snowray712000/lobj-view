@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.8.3
+- 新功能: 左上角狀態列新增「單面」核取方塊，預設關閉（維持原本的雙面繪製）；勾選後網格只繪正面（三角形頂點逆時針的那一面），背面不畫，可從背面看穿模型，也可用來檢查三角形方向是否一致
+- 工程師筆記: 原本材質固定 `THREE.DoubleSide`；改為 `meshSide()` 依 `singleSided` 回傳 `FrontSide` / `DoubleSide`，切換時逐一更新已載入模型的 `material.side` 並設 `needsUpdate`，之後新載入的模型沿用目前設定。wire / normal 線段不受影響。此選項不記入 localStorage #cull #FrontSide
+
 ### 1.8.2
 - 新功能: 左上角狀態列（格線旁）新增「正交投影」核取方塊，預設關閉；勾選後改用正交相機（平行投影、沒有近大遠小），切換時視角與畫面大小維持不變，取消勾選回到透視
 - 工程師筆記: `main.ts` 新增 `orthoCamera`，`camera` 改為可切換的 `let`，`setOrthographic` 換相機並同步 `controls.object`；正交可視範圍依目標點距離與 fov 計算（`updateOrthoFrustum`），滾輪縮放走 `zoom`，換回透視時把 zoom 換算成距離。此選項不記入 localStorage #ortho #camera

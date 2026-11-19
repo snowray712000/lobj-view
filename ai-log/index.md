@@ -44,3 +44,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: update, self_replace, ureq, /api/update, releases/latest, digest, LOBJ_VIEW_TARGET, LOBJ_VIEW_RESTART, restart_requested, relaunch, bind_retry, remember_exe, guard_with, --allow-remote-update, ALLOW_REMOTE, 檢查更新
 - [2026/s4/261119p_orthographic_v182.md](2026/s4/261119p_orthographic_v182.md) — 1.8.2: "正交投影" checkbox in the top-left status box (default off); swaps between perspective and orthographic cameras keeping apparent size.
   Keywords: orthographic, OrthographicCamera, OrbitControls, zoom, updateOrthoFrustum, setOrthographic, 1.8.2
+- [2026/s4/261119q_single_side_v183.md](2026/s4/261119q_single_side_v183.md) — 1.8.3: "單面" checkbox (default off) switching mesh material between DoubleSide and FrontSide.
+  Keywords: single-sided, FrontSide, DoubleSide, backface culling, material.side, winding, 1.8.3
