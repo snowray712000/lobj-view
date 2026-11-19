@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 0.0.10：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
+> 目前版本 0.0.11：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
 
 ## 安裝
 
@@ -106,6 +106,8 @@ lobj-view --host 0.0.0.0
 
 4. **完全重新啟動瀏覽器**，再開 `https://<伺服器IP>:<port>`。
 
+> CA 主體為 `O=ccu-cadcam`、`CN=ccu-cadcam lobj-view local CA`。從舊版（主體只有 `lobj-view`）升級後，第一次啟動會自動重建 CA，**所有裝置需重新匯入一次**，舊的 `lobj-view` CA 可在憑證管理員中刪除。
+
 ### 常見坑
 
 - 匯入後仍有警告 → 瀏覽器沒有完全重開（關掉所有視窗再開）。
@@ -142,7 +144,7 @@ ssh -L 8080:localhost:8080 <伺服器>
 
 ## 建置
 
-`lobj` 讀寫程式在同層的 `../lobj`（路徑相依），建置時需要它在原位。
+`lobj` 讀寫程式是 GitHub 上的 [lobj](https://github.com/snowray712000/lobj)（`Cargo.toml` 以 git tag 相依，一般建置會自動下載）。若本機同層有 `lobj` 資料夾想直接改它，可在上層資料夾建立 `.cargo/config.toml`：`[patch."https://github.com/snowray712000/lobj"]` 加上 `lobj = { path = "lobj" }`。
 
 ```bash
 cd web && npm install && npm run build   # 先建前端（輸出 web/dist）

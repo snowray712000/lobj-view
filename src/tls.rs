@@ -38,11 +38,20 @@ pub fn tls_dir() -> PathBuf {
         .join("tls")
 }
 
+/// 憑證主體的組織資訊：CCU = 國立中正大學，cadcam = 實驗室。
+const ORG: &str = "ccu-cadcam";
+const CA_CN: &str = "ccu-cadcam lobj-view local CA";
+/// CA 的識別標記檔內容；改了 CA 主體（DN）就要換這個值，舊 CA 會被重建。
+/// 不能只改 `ca_params()`：簽發伺服器憑證時 issuer DN 是用它重建的，
+/// 與磁碟上舊 CA 的 DN 不一致會造成憑證鏈驗證失敗。
+const CA_ID: &str = "O=ccu-cadcam;CN=ccu-cadcam lobj-view local CA";
+
 fn ca_params() -> Result<CertificateParams> {
     let mut p = CertificateParams::new(Vec::<String>::new())?;
     let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, "lobj-view local CA");
-    dn.push(DnType::OrganizationName, "lobj-view");
+    dn.push(DnType::CommonName, CA_CN);
+    dn.push(DnType::OrganizationName, ORG);
+    dn.push(DnType::OrganizationalUnitName, "lobj-view");
     p.distinguished_name = dn;
     p.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     p.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
@@ -88,13 +97,18 @@ pub fn ensure(extra_sans: &[String]) -> Result<Material> {
     let san_file = dir.join("server.san");
 
     // --- CA：已存在就重用，確保使用者匯入過的信任一直有效 ---
-    let ca_key = if ca_crt.exists() && ca_key_path.exists() {
+    // 舊版 CA（主體只有 "lobj-view"）沒有標記檔，會被視為過期而重建；
+    // 重建後使用者需重新匯入一次 CA。
+    let ca_id_file = dir.join("ca.id");
+    let ca_current = fs::read_to_string(&ca_id_file).is_ok_and(|s| s.trim() == CA_ID);
+    let ca_key = if ca_crt.exists() && ca_key_path.exists() && ca_current {
         KeyPair::from_pem(&fs::read_to_string(&ca_key_path)?)?
     } else {
         let k = KeyPair::generate()?;
         let c = ca_params()?.self_signed(&k)?;
         fs::write(&ca_crt, c.pem())?;
         fs::write(&ca_key_path, k.serialize_pem())?;
+        fs::write(&ca_id_file, CA_ID)?;
         restrict_permissions(&ca_key_path);
         // 換了 CA，舊的伺服器憑證就不能用了
         let _ = fs::remove_file(&cert);
@@ -115,6 +129,7 @@ pub fn ensure(extra_sans: &[String]) -> Result<Material> {
         let mut p = CertificateParams::new(sans.clone())?;
         let mut dn = DistinguishedName::new();
         dn.push(DnType::CommonName, "lobj-view");
+        dn.push(DnType::OrganizationName, ORG);
         p.distinguished_name = dn;
         p.is_ca = IsCa::NoCa;
         p.key_usages = vec![KeyUsagePurpose::DigitalSignature];

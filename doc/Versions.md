@@ -1,5 +1,11 @@
 # Versions
 
+### 0.0.11
+- 優化: 本機 CA 憑證的主體改為 `O=ccu-cadcam`、`CN=ccu-cadcam lobj-view local CA`；從舊版升級後第一次啟動會自動重建 CA，所有裝置需重新匯入一次，舊的 `lobj-view` CA 可刪除
+- 優化: `lobj` 讀寫程式改為 GitHub 上獨立的 crate（https://github.com/snowray712000/lobj ，tag v1.1.1），GitHub Actions 單獨 checkout 本專案即可建置
+- 工程師筆記: `tls.rs` 新增 `ca.id` 標記檔，CA 主體（DN）變更時舊 CA 會被重建；不能只改 `ca_params()`，簽發伺服器憑證時 issuer DN 由它重建，與磁碟上舊 CA 不一致會使憑證鏈驗證失敗 #tls #rcgen #ca-id
+- 工程師筆記: Cargo.toml 的 lobj 為 `git + tag` 相依，本機開發在上層 `rust-workspace/.cargo/config.toml` 用 `[patch]` 指回 `./lobj`（該檔不入版控）#cargo-patch #git-dependency
+
 ### 0.0.10
 - 新功能: 狀態列新增「光源」下拉：固定（原本的光，不隨視角）、頭燈（光一直跟著眼睛位置，轉到哪看細節哪裡就亮）、三燈（眼睛＋左＋右各一盞）；選擇會記住
 - 新功能: 狀態列新增「格線」checkbox，控制世界座標的地面格線顯示（預設關閉，選擇會記住；x-y-z 座標軸不受影響）

@@ -8,7 +8,7 @@
 - [x] 檔案選擇改為資料夾瀏覽（`..`、點資料夾、貼路徑，限制在 `--dir` 內，見 261119b）
 - [ ] 資料夾瀏覽尚未在瀏覽器實機操作驗證（只有單元測試與 build）
 - [ ] 後端依 CAD/CAM 需求處理 mesh 後，結果以 .lobj 串流回前端（POST 路徑尚未做）
-- [ ] CI（.github/workflows/release.yml）目前單獨 checkout lobj-view，`lobj` 為 `../lobj` 路徑相依，需改成同 repo 或 git 相依才能建置
+- [x] CI 單獨 checkout 時 `lobj` 路徑相依無法建置：已改為 git 相依（tag v1.1.1），本機以上層 `.cargo/config.toml` 的 `[patch]` 改用 `../lobj`；尚未實際跑一次 GitHub Actions 驗證
 - [ ] tech-rust 的 src/lobj 與 `../lobj` 目前是兩份拷貝，之後讓 tech-rust 改用 path 相依
 - [ ] 建立 git 版本控制（目前專案尚未 git init）
 - [x] 驗證 release build（Windows、Linux musl 單一執行檔皆可獨立執行，見 261118b）
