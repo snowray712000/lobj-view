@@ -34,8 +34,6 @@ use crate::instance::Shared;
 pub const PROG_ID: &str = "lobj-view.file";
 /// 可註冊的副檔名（不含點）。
 pub const ALL_EXTS: [&str; 5] = ["lobj", "lobj2", "stl", "ply", "obj"];
-/// 不指定時預設處理的副檔名：這兩個幾乎不會與其他程式衝突。
-pub const DEFAULT_EXTS: [&str; 2] = ["lobj", "lobj2"];
 
 #[derive(Clone, Debug)]
 pub struct ExtStatus {
@@ -99,6 +97,8 @@ mod imp {
 
     const CLASSES: &str = r"Software\Classes";
     const BACKUP: &str = r"Software\lobj-view\AssocBackup";
+    /// `Applications` 機碼以執行檔名稱為鍵（Windows 以此辨識「開啟檔案」清單裡的程式）。
+    const APP_EXE: &str = "lobj-view.exe";
 
     fn hkcu() -> RegKey {
         RegKey::predef(HKEY_CURRENT_USER)
@@ -160,6 +160,7 @@ mod imp {
     struct Backup {
         ext_existed: bool,
         had_open_with: bool,
+        had_open_with_list: bool,
         class_default: Option<String>,
         prev_effective: Option<String>,
     }
@@ -173,6 +174,7 @@ mod imp {
         Some(Backup {
             ext_existed: k.get_value::<u32, _>("ExtKeyExisted").unwrap_or(1) != 0,
             had_open_with: k.get_value::<u32, _>("HadOpenWith").unwrap_or(0) != 0,
+            had_open_with_list: k.get_value::<u32, _>("HadOpenWithList").unwrap_or(0) != 0,
             class_default: k.get_value::<String, _>("ClassDefault").ok(),
             prev_effective: k.get_value::<String, _>("PrevEffective").ok(),
         })
@@ -190,6 +192,8 @@ mod imp {
         let (k, _) = root.create_subkey(backup_path(ext)).map_err(io)?;
         k.set_value("ExtKeyExisted", &(class_key.is_some() as u32)).map_err(io)?;
         k.set_value("HadOpenWith", &(has_open_with(ext) as u32)).map_err(io)?;
+        let had_list = root.open_subkey(format!(r"{CLASSES}\.{ext}\OpenWithList\{APP_EXE}")).is_ok();
+        k.set_value("HadOpenWithList", &(had_list as u32)).map_err(io)?;
         if let Some(v) = class_default {
             k.set_value("ClassDefault", &v).map_err(io)?;
         }
@@ -222,9 +226,20 @@ mod imp {
         let (cmd, _) = prog.create_subkey(r"shell\open\command").map_err(io)?;
         cmd.set_value("", &format!("\"{exe}\" \"%1\"")).map_err(io)?;
 
+        // 讓「開啟檔案」（右鍵 > 開啟檔案 / 選擇其他應用程式）的清單裡出現 lobj-view，並顯示友善名稱與圖示
+        let (app, _) = root.create_subkey(format!(r"{CLASSES}\Applications\{APP_EXE}")).map_err(io)?;
+        app.set_value("FriendlyAppName", &"lobj-view 3D 檢視器").map_err(io)?;
+        let (app_icon, _) = app.create_subkey("DefaultIcon").map_err(io)?;
+        app_icon.set_value("", &format!("\"{exe}\",0")).map_err(io)?;
+        let (app_cmd, _) = app.create_subkey(r"shell\open\command").map_err(io)?;
+        app_cmd.set_value("", &format!("\"{exe}\" \"%1\"")).map_err(io)?;
+        let (supported, _) = app.create_subkey("SupportedTypes").map_err(io)?;
+
         for ext in exts {
             backup_save(ext)?; // 動任何東西之前先記錄原狀
             let (key, _) = root.create_subkey(format!(r"{CLASSES}\.{ext}")).map_err(io)?;
+            supported.set_value(format!(".{ext}"), &"").map_err(io)?;
+            key.create_subkey(format!(r"OpenWithList\{APP_EXE}")).map_err(io)?;
             let (owp, _) = key.create_subkey("OpenWithProgids").map_err(io)?;
             owp.set_raw_value(PROG_ID, &RegValue { bytes: Cow::Borrowed(&[]), vtype: REG_NONE })
                 .map_err(io)?;
@@ -246,6 +261,7 @@ mod imp {
             let b = backup_read(ext).unwrap_or(Backup {
                 ext_existed: true,
                 had_open_with: false,
+                had_open_with_list: false,
                 class_default: None,
                 prev_effective: None,
             });
@@ -260,6 +276,16 @@ mod imp {
                         let _ = root.delete_subkey(&owp_path);
                     }
                 }
+            }
+            if !b.had_open_with_list {
+                let list_path = format!(r"{CLASSES}\.{ext}\OpenWithList");
+                let _ = root.delete_subkey_all(format!(r"{list_path}\{APP_EXE}"));
+                if root.open_subkey(&list_path).is_ok_and(|k| k.enum_keys().next().is_none() && k.enum_values().next().is_none()) {
+                    let _ = root.delete_subkey(&list_path);
+                }
+            }
+            if let Ok(st) = root.open_subkey_with_flags(format!(r"{CLASSES}\Applications\{APP_EXE}\SupportedTypes"), KEY_SET_VALUE) {
+                let _ = st.delete_value(format!(".{ext}"));
             }
             let class_path = format!(r"{CLASSES}\.{ext}");
             if let Ok(key) = root.open_subkey_with_flags(&class_path, KEY_READ | KEY_SET_VALUE) {
@@ -297,6 +323,7 @@ mod imp {
         // 已經沒有任何副檔名指向它，就把 ProgId 一併移除
         if !ALL_EXTS.iter().any(|e| has_open_with(e)) {
             let _ = root.delete_subkey_all(format!(r"{CLASSES}\{PROG_ID}"));
+            let _ = root.delete_subkey_all(format!(r"{CLASSES}\Applications\{APP_EXE}"));
         }
         notify();
         let mut st = status()?;

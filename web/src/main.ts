@@ -663,8 +663,8 @@ interface AssocStatus {
 }
 const assocEl = document.getElementById('assoc')!;
 const assocBodyEl = document.getElementById('assoc-body')!;
-/** 預設勾選：這兩個幾乎不會與其他程式衝突；其餘需使用者自己勾。 */
-const assocChecked = new Set(['lobj', 'lobj2']);
+/** 預設全勾：註冊只會讓 lobj-view 出現在「開啟檔案」清單，已有預設程式的副檔名不會被搶走。 */
+const assocChecked = new Set(['lobj', 'lobj2', 'stl', 'ply', 'obj']);
 let assocMsg = '';
 
 /** 沒帶 X-Lobj-Requested 的 POST 後端一律拒絕（擋其他網站的 CSRF）。 */
@@ -726,7 +726,7 @@ function renderAssoc(st: AssocStatus): void {
     el('p', assocMsg, 'msg'),
     el(
       'p',
-      '註冊後，雙擊檔案會交給執行中的 lobj-view（沒有就啟動並開瀏覽器）。.lobj / .lobj2 沒有其他程式佔用時會直接成為預設；' +
+      '註冊後，lobj-view 會出現在檔案右鍵「開啟檔案」的清單裡；雙擊檔案會交給執行中的 lobj-view（沒有就啟動並開瀏覽器）。.lobj / .lobj2 沒有其他程式佔用時會直接成為預設；' +
         '.stl / .ply / .obj 通常已有預設程式，Windows 不允許程式自行覆蓋，註冊後請按右邊按鈕，到系統設定自己指定。',
       'hint',
     ),

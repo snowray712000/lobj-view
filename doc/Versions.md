@@ -2,6 +2,11 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.2.6
+- 新功能: 註冊後，lobj-view 會出現在檔案右鍵「開啟檔案」清單（含「選擇其他應用程式」），顯示為「lobj-view 3D 檢視器」並帶圖示；.stl / .ply / .obj 即使已有其他預設程式也看得到
+- 優化: `register` 不指定 `--ext` 時改為處理全部五種副檔名（只有沒有其他預設程式的才會成為預設，不會搶走別人的）；網頁設定頁預設全勾；移除 `--all`（不指定即全部）
+- 工程師筆記: 新增 `HKCU\Software\Classes\Applications\lobj-view.exe`（`FriendlyAppName`、`shell\open\command`、`DefaultIcon`、`SupportedTypes`）與各副檔名的 `OpenWithList\lobj-view.exe`；備份多記 `HadOpenWithList`，取消註冊依序還原，最後一個副檔名取消時連同 Applications 與 ProgId 一併移除。用 `SHAssocEnumHandlers`（「開啟檔案」選單背後的 API）驗證清單 #assoc #open-with #Applications
+
 ### 1.2.5
 - 新功能: 註冊前先記錄原狀（該副檔名的機碼原本是否存在、類別預設值、當時生效的預設程式），「取消註冊」改為依記錄**還原**：原本沒有的機碼刪除、原本有的值寫回。已註冊的副檔名會顯示「還原為：…」
 - 優化: 若你曾在 Windows 設定把 lobj-view 指定為預設，還原時會提示原本的預設程式，請自己改回（UserChoice 有雜湊保護，程式無法代改）

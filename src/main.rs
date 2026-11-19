@@ -84,14 +84,12 @@ struct Args {
 #[derive(Subcommand)]
 enum Cmd {
     /// 把 lobj-view 註冊成副檔名的開啟程式（目前只支援 Windows；不需要系統管理員）。
-    /// 預設只處理 .lobj .lobj2；.stl .obj .ply 常被其他程式佔用，需以 --ext 明確指定。
+    /// 預設處理全部五種副檔名：一律出現在「開啟檔案」清單；只有沒有其他預設程式的才會直接成為預設
+    /// （.stl .obj .ply 通常已被佔用，不會被搶走，需要自己在系統設定指定）。
     Register {
-        /// 要處理的副檔名，逗號分隔（lobj,lobj2,stl,ply,obj）。
+        /// 只處理這些副檔名，逗號分隔（lobj,lobj2,stl,ply,obj）。
         #[arg(long, value_delimiter = ',')]
         ext: Vec<String>,
-        /// 全部五種副檔名。
-        #[arg(long, conflicts_with = "ext")]
-        all: bool,
     },
     /// 取消註冊（不指定 --ext 就是全部）。
     Unregister {
@@ -117,11 +115,9 @@ async fn main() -> anyhow::Result<()> {
 
     match args.cmd {
         Some(Cmd::Trust { install, sans }) => return run_trust(install, &sans),
-        Some(Cmd::Register { ext, all }) => {
-            let exts = if all {
+        Some(Cmd::Register { ext }) => {
+            let exts = if ext.is_empty() {
                 assoc::ALL_EXTS.iter().map(|s| s.to_string()).collect()
-            } else if ext.is_empty() {
-                assoc::DEFAULT_EXTS.iter().map(|s| s.to_string()).collect()
             } else {
                 assoc::normalize_exts(&ext).map_err(anyhow::Error::msg)?
             };
