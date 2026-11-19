@@ -1,5 +1,17 @@
 # Versions
 
+### 0.0.9
+- 新功能: 畫面右側新增「物件」面板（預設展開，點標題可收合），每個已選檔案一張卡片，顯示頂點數、三角形數與標記數量
+- 新功能: 每個物件可調 alpha 滑桿（0–1，預設 1），多個模型同時顯示時可調成半透明看到重疊處
+- 新功能: 每個物件可選 color（Apple 系統色）；預設「原」＝不設定，維持牙齒標記色；選了顏色後以「疊加」滑桿決定與原色的混合比例（預設 0.6，1 = 完全換色）；取消選取再選回來時設定仍保留
+- 新功能: 左側分成兩塊：上方狀態列「lobj-view @ccu-cadcam v版本 · server: ok · renderer: WebGPU」，點版本號開啟版本紀錄視窗（幾乎全畫面，Esc 或 ✕ 關閉）；下方「選擇檔案」半透明面板可收合（預設展開）
+- 新功能: 狀態列最後新增「主題」下拉：自動（跟隨系統）、淺色、深色、高對比淺色、高對比深色；選擇會記住，介面、3D 背景與物件色調一起切換
+- 優化: 左側不再顯示檔案資訊（移到右側物件卡片），只留路徑錯誤訊息；介面顏色改用 Apple 色票，不再有與背景難分辨的綠字
+- 優化: 地面格線與 x-y-z 座標軸大小隨已載入模型自動調整，沒有模型時回到預設大小
+- 優化: 世界座標改為 z 向上（CAD 慣用）：格線在水平面，預設從前方（-y）看向模型
+- 工程師筆記: 新增 `web/src/props.ts`（alpha/color 套用）、`web/src/apple-color-ios.css`（複製自 FHLNUI `index/theme`，不手改）；屬性只存 CSS 變數名，套用時由目前主題解析；一律建立 color attribute、原色存 `orig`；alpha<1 時 `depthWrite=false` #theme #css-variables #alpha #three.js 261119e
+- 工程師筆記: 新增 `/api/version`、`/api/versions`（`include_str!` 內嵌 doc/Versions.md，Cargo `include` 已加入）；格線 `niceCeil` 取 1/2/5×10ⁿ；z-up 需在建立 OrbitControls 前設 `camera.up`，GridHelper 旋轉 x 軸 90° #z-up #GridHelper #OrbitControls 261119e
+
 ### 0.0.8
 - 新功能: 檔案清單可以多選：Ctrl（Mac 用 ⌘）點擊加選／取消，Shift 點擊選取範圍，一般點擊仍是只選一個
 - 新功能: 選了多個檔案會同時載入並同時顯示在畫面上，相機自動對準全部模型；取消選取的檔案會從畫面移除

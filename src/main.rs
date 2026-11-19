@@ -110,6 +110,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
+        .route("/api/version", get(|| async { env!("CARGO_PKG_VERSION") }))
+        .route("/api/versions", get(|| async { include_str!("../doc/Versions.md") }))
         .route("/trust", get(trust_page))
         .merge(lobj_api::router(args.dir.clone()));
     if let Some(pem) = ca_pem {
