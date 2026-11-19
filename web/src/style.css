@@ -37,6 +37,10 @@ body {
   padding: 4px 10px;
 }
 
+#status2 {
+  margin-top: 2px;
+}
+
 #ver {
   all: unset;
   cursor: pointer;

@@ -39,10 +39,52 @@ scene.add(sky);
 const sun = new THREE.DirectionalLight(0xffffff, 2);
 sun.position.set(5, -7, 10);
 scene.add(sun);
+
+// --- 光源模式：fixed = 固定（原本）；head = 頭燈，光隨眼睛；three = 頭燈 + 左 + 右 ---
+// 跟隨型的燈每幀依相機的 右 / 上 / 前 軸擺在「看向目標點」的方向上。
+type LightMode = 'fixed' | 'head' | 'three';
+const headLight = new THREE.DirectionalLight(0xffffff, 2.2);
+const leftLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const rightLight = new THREE.DirectionalLight(0xffffff, 1.0);
+for (const l of [headLight, leftLight, rightLight]) {
+  scene.add(l);
+  scene.add(l.target);
+}
+let lightMode: LightMode = 'fixed';
+
+function setLightMode(m: LightMode): void {
+  lightMode = m;
+  sun.visible = m === 'fixed';
+  sky.intensity = m === 'fixed' ? 1.5 : 0.9; // 跟隨型時環境光降低，頭燈才有明暗層次
+  headLight.visible = m !== 'fixed';
+  leftLight.visible = rightLight.visible = m === 'three';
+  headLight.intensity = m === 'three' ? 1.6 : 2.2;
+}
+
+const _right = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+function updateLights(): void {
+  if (lightMode === 'fixed') return;
+  camera.updateMatrixWorld();
+  camera.matrixWorld.extractBasis(_right, _up, _fwd); // _fwd 為相機 +z（指向眼睛後方）
+  const d = Math.max(camera.position.distanceTo(controls.target), 1);
+  const place = (l: THREE.DirectionalLight, x: number, y: number, z: number): void => {
+    l.position.copy(controls.target)
+      .addScaledVector(_right, x * d)
+      .addScaledVector(_up, y * d)
+      .addScaledVector(_fwd, z * d);
+    l.target.position.copy(controls.target);
+  };
+  place(headLight, 0, 0.15, 1); // 略偏上，像頭燈
+  place(leftLight, -1, 0.3, 0.6);
+  place(rightLight, 1, 0.3, 0.6);
+}
 // 背景與格線跟著主題（Apple 色票）；系統切換淺 / 深色時重建。
 // 格線與座標軸的大小隨已載入模型的 bbox 調整（見 updateWorld）。
 let grid: THREE.GridHelper | null = null;
 let gridSize = 10;
+let gridVisible = false; // 預設關閉，由狀態列「格線」checkbox 控制
 const axes = new THREE.AxesHelper(1);
 axes.scale.setScalar(1.5);
 scene.add(axes);
@@ -55,6 +97,7 @@ function buildGrid(): void {
   }
   grid = new THREE.GridHelper(gridSize, 10, resolveCssColor('--systemGray'), resolveCssColor('--systemGray3'));
   grid.rotation.x = Math.PI / 2; // GridHelper 預設在 x-z 平面，轉成 x-y（z 向上）
+  grid.visible = gridVisible;
   scene.add(grid);
 }
 
@@ -432,7 +475,47 @@ new ResizeObserver(() => {
 renderer.setAnimationLoop(() => {
   if (!hasSize) return;
   controls.update();
+  updateLights();
   renderer.render(scene, camera);
+});
+
+// --- 格線 checkbox（預設關閉，記住選擇）---
+const gridEl = document.getElementById('grid-toggle') as HTMLInputElement;
+const GRID_KEY = 'lobj-view-grid';
+try {
+  gridEl.checked = localStorage.getItem(GRID_KEY) === '1';
+} catch {
+  /* localStorage 不可用就用預設 */
+}
+gridVisible = gridEl.checked;
+buildGrid();
+gridEl.addEventListener('change', () => {
+  gridVisible = gridEl.checked;
+  buildGrid();
+  try {
+    localStorage.setItem(GRID_KEY, gridEl.checked ? '1' : '0');
+  } catch {
+    /* 忽略 */
+  }
+});
+
+// --- 光源選單（記住選擇）---
+const lightEl = document.getElementById('light') as HTMLSelectElement;
+const LIGHT_KEY = 'lobj-view-light';
+try {
+  const saved = localStorage.getItem(LIGHT_KEY) ?? '';
+  if ([...lightEl.options].some((o) => o.value === saved)) lightEl.value = saved;
+} catch {
+  /* localStorage 不可用就用預設 */
+}
+setLightMode(lightEl.value as LightMode);
+lightEl.addEventListener('change', () => {
+  setLightMode(lightEl.value as LightMode);
+  try {
+    localStorage.setItem(LIGHT_KEY, lightEl.value);
+  } catch {
+    /* 忽略 */
+  }
 });
 
 // --- 後端連線檢查 ---

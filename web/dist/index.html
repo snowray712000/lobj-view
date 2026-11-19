@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view</title>
-    <script type="module" crossorigin src="/assets/index-DNxKDHSf.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dfc6JaDW.css">
+    <script type="module" crossorigin src="/assets/index-C-MG0lMw.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Bs7KMae3.css">
   </head>
   <body>
     <div id="viewport"></div>
@@ -14,14 +14,23 @@
         <b>lobj-view</b> @ccu-cadcam
         <button id="ver" type="button" title="查看版本紀錄">…</button>
         · server: <span id="health">…</span> · renderer: <span id="backend">…</span>
-        · 主題:
-        <select id="theme">
-          <option value="">自動（系統）</option>
-          <option value="light">淺色</option>
-          <option value="dark">深色</option>
-          <option value="hc-light">高對比淺色</option>
-          <option value="hc-dark">高對比深色</option>
-        </select>
+        <div id="status2">
+          光源:
+          <select id="light" title="固定：光源不隨視角；頭燈：光隨眼睛位置；三燈：頭燈加左右各一">
+            <option value="fixed">固定</option>
+            <option value="head">頭燈（跟隨眼睛）</option>
+            <option value="three">三燈（眼睛＋左＋右）</option>
+          </select>
+          · <label><input id="grid-toggle" type="checkbox" /> 格線</label>
+          · 主題:
+          <select id="theme">
+            <option value="">自動（系統）</option>
+            <option value="light">淺色</option>
+            <option value="dark">深色</option>
+            <option value="hc-light">高對比淺色</option>
+            <option value="hc-dark">高對比深色</option>
+          </select>
+        </div>
       </div>
       <div id="browser" class="box">
         <button id="browser-toggle" class="toggle" type="button" aria-expanded="true">選擇檔案</button>
