@@ -259,6 +259,21 @@ function buildCard(f: string): HTMLElement {
     }),
   );
 
+  const wireRow = document.createElement('label');
+  wireRow.className = 'row';
+  const wireName = document.createElement('span');
+  wireName.textContent = 'wire';
+  const wireBox = document.createElement('input');
+  wireBox.type = 'checkbox';
+  wireBox.checked = p.wire;
+  wireBox.title = '顯示 mesh 的邊線（黑線）';
+  wireBox.addEventListener('change', () => {
+    p.wire = wireBox.checked;
+    updateProps(f);
+  });
+  wireRow.append(wireName, wireBox);
+  card.appendChild(wireRow);
+
   // color：第一格「原色」= 不設定
   const swatches = document.createElement('div');
   swatches.className = 'swatches';
@@ -306,6 +321,11 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 function disposeMesh(mesh: THREE.Mesh): void {
   scene.remove(mesh);
+  const wire = mesh.userData.wire as THREE.LineSegments | undefined;
+  if (wire) {
+    wire.geometry.dispose();
+    (wire.material as THREE.Material).dispose();
+  }
   mesh.geometry.dispose();
   (mesh.material as THREE.Material).dispose();
 }

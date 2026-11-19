@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.4.2
+- 新功能: 右側物件卡片新增 wire 核取方塊，勾選後顯示該模型 mesh 的邊線（黑線）；邊線隨 alpha 透明度變化，取消選取再選回來設定仍保留
+- 工程師筆記: `props.ts` 的 `ObjProps.wire`；邊線為 `WireframeGeometry` + `LineBasicMaterial` 的 `LineSegments`，第一次勾選才建立並掛在 mesh 底下（存於 `mesh.userData.wire`），`disposeMesh` 一併釋放；勾選時面材質加 polygonOffset 避免 z-fighting #wireframe #LineSegments #polygonOffset
+
 ### 1.4.1
 - 新功能: 載入後若模型沒有 label（.stl / .obj / .ply，或 labels 全為 -1），自動配一個 color，並優先挑目前畫面上還沒被其他模型用過的顏色；同時載入的模型比色票多時才重複（挑用得最少的）。疊加比例：檔案自帶顏色（.ply / .obj 頂點色）預設 0.2，保留原色；沒有顏色預設 0.6；有 label 的維持 0.6。只配一次，之後你在物件卡片改的選擇不會被覆蓋
 - 工程師筆記: `props.ts` 新增 `pickAutoColor`（色票排除 Gray，因為跟未標記的灰色太像）；後端 `/api/lobj/{name}` 回應加 `X-Lobj-File-Colors` 標頭（檔案本身有沒有顏色，後端依 labels 補的不算）；`main.ts` 的 `Loaded.unlabeled` 與 `autoColored` 集合，於載入完成、`applyProps` 之前決定顏色並重建物件面板 #auto-color #palette

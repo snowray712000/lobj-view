@@ -11,9 +11,11 @@ export interface ObjProps {
   color: string | null;
   /** 0–1，設了 color 之後與原色的混合比例：1 = 完全換成該色，越小越保留原本標記色 */
   mix: number;
+  /** 是否顯示 mesh 的邊線（黑線） */
+  wire: boolean;
 }
 
-export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6 });
+export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6, wire: false });
 
 /** 可選的顏色：Apple system colors（--system<名稱>） */
 export const PALETTE = ['Red', 'Orange', 'Yellow', 'Green', 'Teal', 'Blue', 'Indigo', 'Purple', 'Pink', 'Gray'] as const;
@@ -59,6 +61,31 @@ export function applyProps(mesh: THREE.Mesh, orig: Float32Array, p: ObjProps): v
   }
   mat.opacity = p.alpha;
   mat.depthWrite = !transparent; // 半透明時不寫深度，才看得到後面的模型
+
+  // 邊線：第一次勾選才建立（所有三角形的邊，黑色），掛在 mesh 底下跟著動；alpha 一併套用
+  let wire = mesh.userData.wire as THREE.LineSegments | undefined;
+  if (p.wire && !wire) {
+    wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(mesh.geometry),
+      new THREE.LineBasicMaterial({ color: 0x000000 }),
+    );
+    mesh.userData.wire = wire;
+    mesh.add(wire);
+  }
+  if (wire) {
+    wire.visible = p.wire;
+    const lm = wire.material as THREE.LineBasicMaterial;
+    lm.transparent = transparent;
+    lm.opacity = p.alpha;
+    lm.depthWrite = !transparent;
+  }
+  // 面稍微往後推，邊線才不會被同位置的面蓋住（z-fighting）
+  if (mat.polygonOffset !== p.wire) {
+    mat.polygonOffset = p.wire;
+    mat.polygonOffsetFactor = 1;
+    mat.polygonOffsetUnits = 1;
+    mat.needsUpdate = true;
+  }
 
   const attr = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
   const arr = attr.array as Float32Array;
