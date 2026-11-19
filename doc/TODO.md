@@ -19,6 +19,7 @@
 - [x] Linux 單一執行檔：改走 GitHub Actions + cross，已可建出 Linux / Windows / macOS（見 261118e）
 
 ## 次要
+- [ ] 1.6.2 伺服器狀態列（261119n）：GPU（nvidia-smi）與多人計數尚未實機驗證；AMD / Intel GPU 未支援
 - [ ] zip 當資料夾（1.6.1，261119m）只有單元測試與一次瀏覽器取消實測；尚未用真實的大型 zip（含中文檔名）操作
 - [ ] zip 內檔名非 UTF-8（Big5 / GBK）的處理；加密 zip 的提示
 - [ ] 解壓進度（目前只有已經過秒數，沒有百分比）

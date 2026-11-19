@@ -17,3 +17,6 @@ Show how many "people-tabs" use the server, plus CPU / memory / GPU status, as a
 
 ## Open items
 AMD/Intel GPU not supported; multi-person count untested with real LAN clients.
+
+## Gotcha
+Editing Cargo.toml with PowerShell `Get-Content -Raw | Set-Content` (no `-Encoding utf8` on read) turned its Chinese comments into mojibake, committed in d90b95f and repaired in d01eebb (restored from the previous commit, then re-applied version + sysinfo). Windows PowerShell 5.1 also writes a BOM with `-Encoding utf8`. Use a Python script file (`encoding='utf-8', newline=''`) for edits to files with non-ASCII text; Python code piped through a shell heredoc also gets its non-ASCII literals garbled.
