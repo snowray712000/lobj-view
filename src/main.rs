@@ -1,3 +1,4 @@
+mod lobj_api;
 mod tls;
 
 use std::io::ErrorKind;
@@ -59,6 +60,10 @@ struct Args {
     /// 額外寫入憑證的名稱或 IP（例如 DNS 名稱），可重複指定。
     #[arg(long = "san")]
     sans: Vec<String>,
+
+    /// 提供 .lobj / .lobj2 檔案的根資料夾（前端可瀏覽其子資料夾，但不能超出此資料夾）。
+    #[arg(short, long, default_value = ".")]
+    dir: PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -105,7 +110,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
-        .route("/trust", get(trust_page));
+        .route("/trust", get(trust_page))
+        .merge(lobj_api::router(args.dir.clone()));
     if let Some(pem) = ca_pem {
         app = app.route(
             "/ca.crt",

@@ -23,6 +23,50 @@ body {
   pointer-events: none;
 }
 
+#hud select,
+#hud input,
+#hud ul {
+  pointer-events: auto;
+}
+
+#path {
+  width: 22em;
+}
+
+#files {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-width: 28em;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+#files li {
+  padding: 0 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#files li:hover {
+  background: rgb(255 255 255 / 0.15);
+}
+
+#files li.dir {
+  color: #8ab4f8;
+}
+
+#files li.sel {
+  background: rgb(124 207 124 / 0.25);
+}
+
+#info {
+  white-space: pre-line;
+  max-width: 28em;
+}
+
 .ok {
   color: #7ccf7c;
 }

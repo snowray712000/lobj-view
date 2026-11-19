@@ -1,6 +1,6 @@
 [package]
 name = "lobj-view"
-version = "0.0.3"
+version = "0.0.7"
 edition = "2024"
 description = "Web-based viewer for .lobj (labeled binary 3D object) files"
 # cargo install / cargo package 只帶這些檔案；web/dist 必須事先 build 好並一起發佈，
@@ -24,6 +24,8 @@ axum = "0.8.9"
 axum-server = { version = "0.9.2", default-features = false, features = ["tls-rustls-ring"] }
 clap = { version = "4.6.8", features = ["derive"] }
 dirs = "7"
+# 與 lobj-view 同層的共用 crate（.lobj 讀寫）；單獨發佈此 repo 時需改成 git / crates.io 來源
+lobj = { path = "../lobj" }
 local-ip-address = "0.6"
 mime_guess = "2.0.5"
 rcgen = "0.14.10"

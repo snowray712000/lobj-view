@@ -11,6 +11,16 @@
       <div><b>lobj-view</b></div>
       <div>renderer: <span id="backend">…</span></div>
       <div>server: <span id="health">…</span></div>
+      <div>
+        <input id="path" type="text" spellcheck="false" placeholder="貼上路徑後按 Enter（/ 或 \ 皆可）" />
+        <select id="jaw" title="舊 .lobj 且檔名沒有 upper / lower 時使用">
+          <option value="">jaw: 自動</option>
+          <option value="upper">upper</option>
+          <option value="lower">lower</option>
+        </select>
+      </div>
+      <ul id="files"></ul>
+      <div id="info"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

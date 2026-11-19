@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 0.0.3：畫面仍是示範模型，尚無法開啟 .lobj 檔。
+> 目前版本 0.0.7：可用 `--dir` 指定根資料夾，在畫面左上角瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`，依 label 上色。
 
 ## 安裝
 
@@ -43,9 +43,22 @@ lobj-view
 |---|---|
 | `--host <IP>` | 監聽位址，預設 `127.0.0.1` |
 | `-p, --port <N>` | 偏好的 port，預設 8080 |
+| `-d, --dir <資料夾>` | 提供 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply` 的資料夾（可瀏覽其子資料夾，但不能超出此資料夾），預設目前資料夾 |
 | `--http` / `--https` | 強制使用 HTTP / HTTPS（見下） |
 | `--cert <pem> --key <pem>` | 自備憑證 |
 | `--san <名稱或IP>` | 額外寫入憑證的名稱（可重複） |
+
+## 開啟 .lobj
+
+```bash
+lobj-view --dir path/to/models
+```
+
+畫面左上角有路徑欄與檔案清單：點資料夾進入下一層、點 `📁 ..` 回上一層，也可貼上路徑（`/` 或 `\` 皆可，相對或 `--dir` 底下的絕對路徑）後按 Enter；路徑不可超出 `--dir`。點檔案即載入，並顯示頂點數、三角形數與各 label 數量。
+
+- `.lobj2` 的 label 是 FDI；舊 `.lobj` 是 arch_index，需要知道上顎或下顎。檔名含 `upper` / `lower` 會自動判斷，否則請用 jaw 選單指定。
+- 檔案若沒有頂點顏色，後端會依 label 補上。
+- API（前後端以 `.lobj` 二進位串流傳遞，labels 一律 FDI）：`GET /api/lobj`（列表）、`GET /api/lobj/<檔名>[?jaw=upper|lower]`。
 
 ## 為什麼需要 HTTPS
 
@@ -124,6 +137,8 @@ ssh -L 8080:localhost:8080 <伺服器>
 
 ## 建置
 
+`lobj` 讀寫程式在同層的 `../lobj`（路徑相依），建置時需要它在原位。
+
 ```bash
 cd web && npm install && npm run build   # 先建前端（輸出 web/dist）
 cd .. && cargo build --release           # 前端會嵌入執行檔
@@ -131,3 +146,10 @@ cd .. && cargo build --release           # 前端會嵌入執行檔
 
 `cargo install` 的安裝端不需要 Node.js，但發佈前必須先 build 好 `web/dist`。
 注意：TLS 使用 `ring`，含 C 程式碼，從 Windows 交叉編譯 Linux musl 需要 C 編譯器，請用 GitHub Actions 建置（見 [doc/github-cross-compile.md](doc/github-cross-compile.md)）。
+
+## 開發時
+
+```bash
+# 在 lobj-view 目錄下
+cargo run -- --dir --host 0.0.0.0
+```

@@ -1,8 +1,15 @@
 # TODO
 
 ## 重要
-- [ ] 取得 lobj 二進位格式規格（檔頭、各區段排列、label 型別），實作解析器並讓檢視器能開啟 .lobj 檔
-- [ ] 後端提供讀取 lobj 檔的 API，前端載入後依 label 上色
+- [x] lobj 讀寫：共用 crate `../lobj`（自 tech-rust 移植，含 tests）；前端 `web/src/lobj.ts` 對應解析
+- [x] 後端 `GET /api/lobj`、`GET /api/lobj/{name}[?jaw=]`（`--dir` 指定資料夾），以 .lobj binary stream 傳遞；labels 一律 FDI、缺 colors 由後端補
+- [x] 瀏覽器內實機確認畫面（使用者已確認可用；修正了下拉選單被 pointer-events 擋住的問題，見 261119a）
+- [ ] 0.0.7（含 0.0.6、0.0.5、0.0.4）尚未打 tag / 推送發佈（專案未 git init；CI 需先解決 lobj 路徑相依）
+- [x] 檔案選擇改為資料夾瀏覽（`..`、點資料夾、貼路徑，限制在 `--dir` 內，見 261119b）
+- [ ] 資料夾瀏覽尚未在瀏覽器實機操作驗證（只有單元測試與 build）
+- [ ] 後端依 CAD/CAM 需求處理 mesh 後，結果以 .lobj 串流回前端（POST 路徑尚未做）
+- [ ] CI（.github/workflows/release.yml）目前單獨 checkout lobj-view，`lobj` 為 `../lobj` 路徑相依，需改成同 repo 或 git 相依才能建置
+- [ ] tech-rust 的 src/lobj 與 `../lobj` 目前是兩份拷貝，之後讓 tech-rust 改用 path 相依
 - [ ] 建立 git 版本控制（目前專案尚未 git init）
 - [x] 驗證 release build（Windows、Linux musl 單一執行檔皆可獨立執行，見 261118b）
 - [ ] 驗證 `cargo install --git`（從原始碼編譯）與 `cargo package` 的 web/dist 是否正確帶入；`cargo binstall` 已驗證可用
@@ -12,6 +19,10 @@
 - [x] Linux 單一執行檔：改走 GitHub Actions + cross，已可建出 Linux / Windows / macOS（見 261118e）
 
 ## 次要
+- [ ] 用真實 .stl / .obj / .ply 檔在瀏覽器實機確認（目前只有單元測試，見 261119c、261119d）
+- [ ] .ply 改善：ASCII 內容非 UTF-8 時的錯誤訊息不準確；list 數量異常大時未防護（261119d）
+- [ ] 視需要支援寫出 .obj / .ply，或讀取 .mtl 材質（目前只能讀幾何）
+- [ ] 視需要支援寫出 .stl（目前只能讀）
 - [ ] 格式確定後，考慮把 lobj 讀寫拆成獨立 crate 以便共用
 - [ ] 命令列直接指定檔案：`lobj-view model.lobj`
 - [ ] 監看檔案變更並自動重新載入畫面
