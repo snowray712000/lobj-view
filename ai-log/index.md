@@ -32,3 +32,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: Open with, SHAssocEnumHandlers, IAssocHandler, Applications, FriendlyAppName, SupportedTypes, OpenWithList, OpenWithProgids, HadOpenWithList, register all extensions, PowerShell string interpolation, Windows
 - [2026/s4/261119j_auto_color_and_wire_v141_v142.md](2026/s4/261119j_auto_color_and_wire_v141_v142.md) — 1.4.1–1.4.2: unlabeled meshes get an unused auto color (mix 0.2 if the file has its own colors, else 0.6; backend sends `X-Lobj-File-Colors`), plus a per-object wire checkbox drawing black mesh edges.
   Keywords: auto color, pickAutoColor, AUTO_PALETTE, unlabeled, X-Lobj-File-Colors, fileHasColors, mix, wire, WireframeGeometry, LineSegments, polygonOffset, z-fighting
+- [2026/s4/261119k_normal_checkbox_v143.md](2026/s4/261119k_normal_checkbox_v143.md) — 1.4.3: per-object normal checkbox drawing a short blue line per vertex (length 3% of bounding-sphere radius), lazily built like the wire.
+  Keywords: normal, vertex normals, buildNormalLines, LineSegments, computeVertexNormals, userData.normals

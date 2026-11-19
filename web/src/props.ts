@@ -13,9 +13,11 @@ export interface ObjProps {
   mix: number;
   /** 是否顯示 mesh 的邊線（黑線） */
   wire: boolean;
+  /** 是否顯示每個頂點的法向量（藍色短線） */
+  normal: boolean;
 }
 
-export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6, wire: false });
+export const defaultProps = (): ObjProps => ({ alpha: 1, color: null, mix: 0.6, wire: false, normal: false });
 
 /** 可選的顏色：Apple system colors（--system<名稱>） */
 export const PALETTE = ['Red', 'Orange', 'Yellow', 'Green', 'Teal', 'Blue', 'Indigo', 'Purple', 'Pink', 'Gray'] as const;
@@ -48,6 +50,22 @@ export function resolveCssColor(varName: string): THREE.Color {
   return new THREE.Color().setStyle(getComputedStyle(probe).color);
 }
 
+function buildNormalLines(geom: THREE.BufferGeometry): THREE.LineSegments {
+  const pos = geom.getAttribute('position') as THREE.BufferAttribute;
+  const nor = geom.getAttribute('normal') as THREE.BufferAttribute;
+  if (!geom.boundingSphere) geom.computeBoundingSphere();
+  const len = (geom.boundingSphere?.radius ?? 1) * 0.03;
+  const n = pos.count;
+  const arr = new Float32Array(n * 6);
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    arr.set([x, y, z, x + nor.getX(i) * len, y + nor.getY(i) * len, z + nor.getZ(i) * len], i * 6);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x0a84ff }));
+}
+
 /**
  * 把屬性套到 mesh。`orig` 是檔案原本的頂點顏色（長度同頂點數*3）；
  * 沒設 color 時還原成 orig，設了則依 `mix` 混合。
@@ -75,6 +93,20 @@ export function applyProps(mesh: THREE.Mesh, orig: Float32Array, p: ObjProps): v
   if (wire) {
     wire.visible = p.wire;
     const lm = wire.material as THREE.LineBasicMaterial;
+    lm.transparent = transparent;
+    lm.opacity = p.alpha;
+    lm.depthWrite = !transparent;
+  }
+  // 頂點法向量：每個頂點一條短線（長度 = 模型外接球半徑的 3%），第一次勾選才建立
+  let nrm = mesh.userData.normals as THREE.LineSegments | undefined;
+  if (p.normal && !nrm) {
+    nrm = buildNormalLines(mesh.geometry);
+    mesh.userData.normals = nrm;
+    mesh.add(nrm);
+  }
+  if (nrm) {
+    nrm.visible = p.normal;
+    const lm = nrm.material as THREE.LineBasicMaterial;
     lm.transparent = transparent;
     lm.opacity = p.alpha;
     lm.depthWrite = !transparent;

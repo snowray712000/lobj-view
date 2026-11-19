@@ -274,6 +274,21 @@ function buildCard(f: string): HTMLElement {
   wireRow.append(wireName, wireBox);
   card.appendChild(wireRow);
 
+  const normRow = document.createElement('label');
+  normRow.className = 'row';
+  const normName = document.createElement('span');
+  normName.textContent = 'normal';
+  const normBox = document.createElement('input');
+  normBox.type = 'checkbox';
+  normBox.checked = p.normal;
+  normBox.title = '顯示每個頂點的法向量（藍線）';
+  normBox.addEventListener('change', () => {
+    p.normal = normBox.checked;
+    updateProps(f);
+  });
+  normRow.append(normName, normBox);
+  card.appendChild(normRow);
+
   // color：第一格「原色」= 不設定
   const swatches = document.createElement('div');
   swatches.className = 'swatches';
@@ -321,10 +336,12 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 function disposeMesh(mesh: THREE.Mesh): void {
   scene.remove(mesh);
-  const wire = mesh.userData.wire as THREE.LineSegments | undefined;
-  if (wire) {
-    wire.geometry.dispose();
-    (wire.material as THREE.Material).dispose();
+  for (const key of ['wire', 'normals']) {
+    const ls = mesh.userData[key] as THREE.LineSegments | undefined;
+    if (ls) {
+      ls.geometry.dispose();
+      (ls.material as THREE.Material).dispose();
+    }
   }
   mesh.geometry.dispose();
   (mesh.material as THREE.Material).dispose();

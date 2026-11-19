@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.4.3
+- 新功能: 右側物件卡片新增 normal 核取方塊，勾選後在每個頂點畫出法向量（藍色短線，長度為模型外接球半徑的 3%）；沒有法向量的檔案（.stl / .obj / .ply）以計算出的頂點法向量顯示
+- 工程師筆記: `props.ts` 的 `ObjProps.normal` 與 `buildNormalLines`（每頂點一段 `LineSegments`，存於 `mesh.userData.normals`，第一次勾選才建立，`disposeMesh` 一併釋放）#normals #LineSegments
+
 ### 1.4.2
 - 新功能: 右側物件卡片新增 wire 核取方塊，勾選後顯示該模型 mesh 的邊線（黑線）；邊線隨 alpha 透明度變化，取消選取再選回來設定仍保留
 - 工程師筆記: `props.ts` 的 `ObjProps.wire`；邊線為 `WireframeGeometry` + `LineBasicMaterial` 的 `LineSegments`，第一次勾選才建立並掛在 mesh 底下（存於 `mesh.userData.wire`），`disposeMesh` 一併釋放；勾選時面材質加 polygonOffset 避免 z-fighting #wireframe #LineSegments #polygonOffset
