@@ -1,6 +1,6 @@
 [package]
 name = "lobj-view"
-version = "1.7.1"
+version = "1.8.1"
 edition = "2024"
 description = "Web-based viewer for .lobj (labeled binary 3D object) files"
 # cargo install / cargo package 只帶這些檔案；web/dist 必須事先 build 好並一起發佈，
@@ -38,6 +38,11 @@ open = "5"
 serde_json = "1.0.154"
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
+ureq = "3"
+self-replace = "1"
+tar = "0.4"
+flate2 = "1"
+sha2 = "0.11"
 
 [target."cfg(windows)".dependencies]
 winreg = "0.56.0"

@@ -4,6 +4,8 @@
 fn main() {
     println!("cargo:rerun-if-changed=assets/lobj-view.ico");
     println!("cargo:rerun-if-changed=build.rs");
+    // 線上更新要知道該下載哪個平台的 Release 檔（src/update.rs）
+    println!("cargo:rustc-env=LOBJ_VIEW_TARGET={}", std::env::var("TARGET").unwrap_or_default());
     #[cfg(windows)]
     {
         if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {

@@ -19,6 +19,7 @@
 - [x] Linux 單一執行檔：改走 GitHub Actions + cross，已可建出 Linux / Windows / macOS（見 261118e）
 
 ## 次要
+- [ ] 1.8.1 線上更新（261119o）：Windows 已實測 1.6.9 → 1.7.1；Linux / macOS 的 `exec` 重新啟動與 tar.gz 解壓尚未實機驗證；1.8.1 → 下一版要等有更新的 Release 才能實測
 - [ ] 1.6.2 伺服器狀態列（261119n）：GPU（nvidia-smi）與多人計數尚未實機驗證；AMD / Intel GPU 未支援
 - [ ] zip 當資料夾（1.6.1，261119m）只有單元測試與一次瀏覽器取消實測；尚未用真實的大型 zip（含中文檔名）操作
 - [ ] zip 內檔名非 UTF-8（Big5 / GBK）的處理；加密 zip 的提示

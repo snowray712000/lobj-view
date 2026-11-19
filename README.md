@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 1.7.1：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color（沒有 label 的模型載入後會自動配色，盡量不重複；可勾選 wire 顯示黑色邊線、normal 顯示頂點法向量、curv 以曲率上色（凸凹 / max / min，可先平滑、可用滑桿調截斷百分位）），計算方式見 [doc/curvature.md](doc/curvature.md)；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
+> 目前版本 1.8.1：版本號旁的「檢查更新」可一鍵更新到 GitHub 最新版並自動重新啟動（見「更新」）。可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color（沒有 label 的模型載入後會自動配色，盡量不重複；可勾選 wire 顯示黑色邊線、normal 顯示頂點法向量、curv 以曲率上色（凸凹 / max / min，可先平滑、可用滑桿調截斷百分位）），計算方式見 [doc/curvature.md](doc/curvature.md)；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
 
 ## 安裝
 
@@ -33,6 +33,19 @@ cargo install --git https://github.com/snowray712000/lobj-view
 
 發佈流程（GitHub Actions cross-compile）見 [doc/github-cross-compile.md](doc/github-cross-compile.md)。
 
+### 更新
+
+1.8.1 起可以直接從網頁更新：版本號旁的「檢查更新」在有新版時會變成綠色「⬆ 有新版 vX」，點開後按「更新到 vX 並重新啟動」即可——會下載這個平台的 Release 檔、驗證後替換執行檔，伺服器在同一個 port 重新啟動，網頁自動重新整理。
+
+```bash
+lobj-view update --check   # 只檢查
+lobj-view update           # 下載並替換（執行中的 lobj-view 要重新啟動才會換成新版）
+```
+
+- 網頁更新預設只在伺服器監聽本機（預設 `127.0.0.1`）時可用；`--host 0.0.0.0` 時請在伺服器上用 `lobj-view update`，或加上 `--allow-remote-update` 啟動，讓區網上的網頁也能按更新（開啟後任何能開這個網頁的人都能讓伺服器更新並重新啟動，請只在信任的網路使用）。
+- 需要能連上 github.com，且執行檔所在資料夾有寫入權限；剛推 tag 時 Actions 還在建置，會提示稍後再試。
+- 1.7.1 以前的版本沒有這個功能，要先用上面任一種方法裝一次 1.8.1。
+
 ## 快速開始（本機使用）
 
 ```bash
@@ -48,6 +61,7 @@ lobj-view
 | `-d, --dir <資料夾>` | 提供 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply` 的資料夾（可瀏覽其子資料夾，但不能超出此資料夾），預設目前資料夾 |
 | `[PATH]` | 要開啟的檔案或資料夾；已有執行中的 lobj-view 就交給它，否則啟動並自動開瀏覽器（見「單一實例」） |
 | `--new` / `--no-browser` | 另起獨立實例 / 帶 PATH 時不自動開瀏覽器 |
+| `--allow-remote-update` | 監聽非本機位址時也允許網頁觸發線上更新（預設關閉，見「更新」） |
 | `--http` / `--https` | 強制使用 HTTP / HTTPS（見下） |
 | `--cert <pem> --key <pem>` | 自備憑證 |
 | `--san <名稱或IP>` | 額外寫入憑證的名稱（可重複） |

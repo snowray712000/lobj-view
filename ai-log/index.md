@@ -40,3 +40,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: zip, zipfs.rs, zipcache, .partial, CancelOnDrop, AbortController, withBusy, spawn_blocking, descend, Resolved, enclosed_name, lexical_normalize, nested zip, zips, 取消, 處理中
 - [2026/s4/261119n_server_status_v162.md](2026/s4/261119n_server_status_v162.md) — 1.6.2: new "伺服器" status row (people/tabs by peer IP, CPU, memory, optional nvidia-smi GPU) from a cached 3 s background sampler read via `/api/stats`.
   Keywords: stats.rs, sysinfo, /api/stats, ConnectInfo, peers, tab_guard, nvidia-smi, CREATE_NO_WINDOW, status3
+- [2026/s4/261119o_self_update_v181.md](2026/s4/261119o_self_update_v181.md) — 1.8.1: self-update — UI "檢查更新" button / `lobj-view update` fetch the latest GitHub Release, verify (size, sha256 digest, `--version`), `self_replace` the exe, and restart on the same port (Unix exec, Windows spawn + wait-for-parent-pid).
+  Keywords: update, self_replace, ureq, /api/update, releases/latest, digest, LOBJ_VIEW_TARGET, LOBJ_VIEW_RESTART, restart_requested, relaunch, bind_retry, remember_exe, guard_with, --allow-remote-update, ALLOW_REMOTE, 檢查更新

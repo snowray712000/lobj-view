@@ -2,6 +2,14 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.8.1
+- 新功能: 線上更新：版本號旁新增「檢查更新」鈕，開頁時會安靜地查一次 GitHub，有新版時變成綠色「⬆ 有新版 vX」；點開後按「更新到 vX 並重新啟動」，會下載新版取代執行檔、伺服器在同一個 port 自動重新啟動，網頁等到新版上線就自動重新整理（已開的模型需重新載入）
+- 新功能: 命令列 `lobj-view update`（下載並替換）與 `lobj-view update --check`（只檢查）；伺服器以 `--host 0.0.0.0` 對外開放時網頁預設不開放更新，請在伺服器上用這個指令
+- 新功能: 啟動參數 `--allow-remote-update`：搭配 `--host 0.0.0.0` 時明確開啟，區網上的網頁也能按更新（預設關閉；開啟後任何能開網頁的人都能讓伺服器更新並重新啟動）
+- 優化: 下載後先驗證大小與 GitHub 提供的 sha256，並試跑 `新檔 --version` 確認版本正確才替換；任何一步失敗都不動到原本的執行檔
+- 已知限制: 需要能連上 github.com；執行檔所在資料夾要有寫入權限（例如裝在 Program Files 就不行）；GitHub 發佈後 Actions 還在建置時會顯示「還沒有這個平台的檔案，請過幾分鐘再試」；用 `cargo install` 從原始碼裝的也會被換成 Release 的預編譯檔
+- 工程師筆記: 新增 `src/update.rs`：`/api/update`（GET 查詢，結果快取 10 分鐘，`?force=1` 略過；POST 更新，與副檔名關聯共用 `assoc::guard_with` 只允許本機 + `X-Lobj-Requested`；`--allow-remote-update` 時 `update::guard` 略過本機與 Host 檢查，但仍要 `X-Lobj-Requested`，重新啟動沿用原參數所以設定會保留）。ureq 3（rustls + ring）查 `releases/latest`，依 build.rs 傳入的 `LOBJ_VIEW_TARGET` 挑 asset（linux-gnu 對應 musl 版），zip / tar.gz 取出 `lobj-view(.exe)`，`self_replace` 換掉執行中的檔案。重新啟動：主迴圈的 `select!` 多等 `restart_requested()` → 清掉 `instance.txt` → 以相同參數加環境變數 `LOBJ_VIEW_RESTART=<pid>:<port>` 重新執行（Unix 用 `exec` 保留 pid；Windows 開子程序後結束，新程序以 sysinfo 等舊 pid 結束）→ 新程序沿用 port（`bind_retry`）、不開瀏覽器 #update #self_replace #ureq #restart
+
 ### 1.7.1
 統整 1.6.1 ～ 1.6.2 的發佈版，細節請看下方各舊版本。
 - 新功能: .zip 當資料夾用：檔案瀏覽裡的 .zip 顯示成 📦 資料夾，可點進去看裡面的模型檔，也可貼 `資料夾/a.zip/子資料夾/檔案.stl` 路徑（zip 裡的 zip 也可以）；原 .zip 不會被改動，第一次進入才在背景解壓到快取（1.6.1）

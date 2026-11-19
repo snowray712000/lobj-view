@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <script type="module" crossorigin src="/assets/index-C932qlBU.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BYUDXE1-.css">
+    <script type="module" crossorigin src="/assets/index-BO4aixah.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B0T-U9sa.css">
   </head>
   <body>
     <div id="viewport"></div>
@@ -14,6 +14,7 @@
       <div id="status" class="box">
         <b>lobj-view</b> @ccu-cadcam
         <button id="ver" type="button" title="查看版本紀錄">…</button>
+        <button id="update-btn" type="button" title="檢查 GitHub 上有沒有新版">檢查更新</button>
         · server: <span id="health">…</span> · renderer: <span id="backend">…</span>
         <div id="status2">
           光源:
@@ -65,9 +66,13 @@
       <div class="dlg-head"><b>預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>
       <div id="assoc-body"></div>
     </div>
+    <div id="update" hidden>
+      <div class="dlg-head"><b>更新 lobj-view</b><button id="update-close" type="button">✕</button></div>
+      <div id="update-body"></div>
+    </div>
     <aside id="panel">
       <button id="panel-toggle" type="button" aria-expanded="true">物件 (0)</button>
       <div id="panel-body"></div>
-    </aside>
+    </aside>
   </body>
 </html>

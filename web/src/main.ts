@@ -983,6 +983,124 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') versionsEl.hidden = true;
 });
 
+// --- 線上更新（GitHub Release）---
+interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  url: string;
+  canApply: boolean;
+  reason: string | null;
+}
+const updateBtn = document.getElementById('update-btn') as HTMLButtonElement;
+const updateEl = document.getElementById('update')!;
+const updateBodyEl = document.getElementById('update-body')!;
+let updating = false;
+
+async function checkUpdate(force: boolean): Promise<UpdateInfo> {
+  const r = await fetch(`/api/update${force ? '?force=1' : ''}`);
+  if (!r.ok) throw new Error((await r.text()) || String(r.status));
+  return (await r.json()) as UpdateInfo;
+}
+
+function showUpdateBadge(u: UpdateInfo): void {
+  updateBtn.classList.toggle('has-update', u.newer);
+  updateBtn.textContent = u.newer ? `⬆ 有新版 v${u.latest}` : '檢查更新';
+}
+
+function renderUpdate(u: UpdateInfo | null, msg = ''): void {
+  const p = (text: string, cls?: string) => {
+    const e = document.createElement('p');
+    e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  };
+  updateBodyEl.replaceChildren();
+  if (u) {
+    updateBodyEl.append(p(`目前版本 v${u.current}，GitHub 最新版 v${u.latest}`));
+    if (u.url) {
+      const a = document.createElement('a');
+      a.href = u.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = '在 GitHub 查看這個版本';
+      const wrap = p('');
+      wrap.append(a);
+      updateBodyEl.append(wrap);
+    }
+    if (!u.newer) updateBodyEl.append(p('已是最新版。'));
+    else if (!u.canApply) updateBodyEl.append(p(u.reason ?? '目前無法線上更新', 'msg'));
+    else {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `更新到 v${u.latest} 並重新啟動`;
+      b.disabled = updating;
+      b.addEventListener('click', () => void applyUpdate(u.latest));
+      updateBodyEl.append(
+        b,
+        p('會下載新版取代目前的執行檔，伺服器重新啟動後此頁自動重新整理（已開的模型需重新載入）。', 'hint'),
+      );
+    }
+  }
+  if (msg) updateBodyEl.append(p(msg, 'msg'));
+}
+
+async function applyUpdate(version: string): Promise<void> {
+  updating = true;
+  renderUpdate(null, `下載 v${version} 中…（依網路速度約數秒到一分鐘）`);
+  try {
+    const r = await fetch('/api/update', { method: 'POST', headers: { 'X-Lobj-Requested': '1' } });
+    if (!r.ok) throw new Error((await r.text()) || String(r.status));
+  } catch (e) {
+    updating = false;
+    renderUpdate(null, `更新失敗：${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  renderUpdate(null, `已更新到 v${version}，重新啟動中…`);
+  // 伺服器重新啟動期間連線會失敗；等到回報新版本就重新整理
+  const start = Date.now();
+  const poll = async (): Promise<void> => {
+    try {
+      const r = await fetch('/api/version', { cache: 'no-store' });
+      if (r.ok && (await r.text()).trim() === version) {
+        location.reload();
+        return;
+      }
+    } catch {
+      /* 重新啟動中 */
+    }
+    if (Date.now() - start > 60_000) {
+      renderUpdate(null, '等候伺服器重新啟動逾時，請手動重新整理此頁（或重新執行 lobj-view）。');
+      return;
+    }
+    setTimeout(() => void poll(), 1000);
+  };
+  setTimeout(() => void poll(), 1000);
+}
+
+updateBtn.addEventListener('click', async () => {
+  updateEl.hidden = false;
+  if (updating) return;
+  renderUpdate(null, '檢查中…');
+  try {
+    const u = await checkUpdate(true);
+    showUpdateBadge(u);
+    renderUpdate(u);
+  } catch (e) {
+    renderUpdate(null, `無法檢查更新：${e instanceof Error ? e.message : e}`);
+  }
+});
+document.getElementById('update-close')!.addEventListener('click', () => (updateEl.hidden = true));
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !updating) updateEl.hidden = true;
+});
+// 開頁時安靜地查一次（後端快取 10 分鐘），有新版才讓按鈕變色
+checkUpdate(false)
+  .then(showUpdateBadge)
+  .catch(() => {
+    /* 離線或 GitHub 限流就維持「檢查更新」 */
+  });
+
 // --- 預設開啟程式（副檔名關聯）---
 interface AssocExt {
   ext: string;

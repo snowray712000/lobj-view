@@ -3,6 +3,7 @@ mod instance;
 mod lobj_api;
 mod stats;
 mod tls;
+mod update;
 mod zipfs;
 
 use std::io::ErrorKind;
@@ -48,6 +49,11 @@ struct Args {
     /// 帶 PATH 啟動時，不自動開瀏覽器。
     #[arg(long)]
     no_browser: bool,
+
+    /// 允許非本機的網頁觸發線上更新（搭配 --host 0.0.0.0 時）。預設關閉：
+    /// 開啟後區網上任何能開這個網頁的人都能讓伺服器更新到 GitHub 最新版並重新啟動。
+    #[arg(long)]
+    allow_remote_update: bool,
 
     /// 監聽位址。預設只聽本機；0.0.0.0 會對外開放且沒有任何驗證。
     /// 非本機位址預設自動啟用 HTTPS（WebGPU 需要 secure context）。
@@ -100,6 +106,12 @@ enum Cmd {
     },
     /// 顯示各副檔名目前的關聯狀態。
     Status,
+    /// 從 GitHub Release 下載最新版並替換這個執行檔（執行中的 lobj-view 要重新啟動才會生效）。
+    Update {
+        /// 只檢查有沒有新版，不下載。
+        #[arg(long)]
+        check: bool,
+    },
     /// 產生本機 CA 與憑證，並顯示其他裝置該怎麼信任它。
     Trust {
         /// 同時把 CA 匯入這台機器的信任清單（Windows / macOS）。
@@ -113,9 +125,11 @@ enum Cmd {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    update::remember_exe();
     let args = Args::parse();
 
     match args.cmd {
+        Some(Cmd::Update { check }) => return update::run_cli(check),
         Some(Cmd::Trust { install, sans }) => return run_trust(install, &sans),
         Some(Cmd::Register { ext }) => {
             let exts = if ext.is_empty() {
@@ -148,6 +162,12 @@ async fn main() -> anyhow::Result<()> {
         None => {}
     }
 
+    // 線上更新後的重新啟動：等舊程序放掉 port 與登記，沿用同一個 port，不另開瀏覽器
+    let restart = update::restart_info();
+    if let Some((pid, _)) = restart {
+        update::wait_pid_exit(pid);
+    }
+
     // 帶檔案／資料夾：先試著交給執行中的實例，沒有才自己當伺服器
     let mut dir = args.dir.clone();
     let mut initial: Option<String> = None;
@@ -175,6 +195,10 @@ async fn main() -> anyhow::Result<()> {
     std::thread::spawn(zipfs::cleanup_cache); // 清掉殘留與過期的 zip 解壓快取
     let shared = instance::Shared::new(dir, initial);
     shared.set_local_only(args.host.is_loopback());
+    update::set_allow_remote(args.allow_remote_update);
+    if args.allow_remote_update && !args.host.is_loopback() {
+        println!("注意: 已開啟 --allow-remote-update，區網上的網頁也能觸發線上更新與重新啟動");
+    }
 
     let use_tls = !args.http && (args.https || args.cert.is_some() || !args.host.is_loopback());
 
@@ -203,7 +227,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/versions", get(|| async { include_str!("../doc/Versions.md") }))
         .route("/trust", get(trust_page))
         .merge(lobj_api::router(shared.clone()))
-        .merge(assoc::router(shared.clone()));
+        .merge(assoc::router(shared.clone()))
+        .merge(update::router(shared.clone()));
     if let Some(pem) = ca_pem {
         app = app.route(
             "/ca.crt",
@@ -223,7 +248,10 @@ async fn main() -> anyhow::Result<()> {
     }
     let app = app.fallback(static_handler);
 
-    let listener = bind(args.host, args.port).await?;
+    let listener = match restart {
+        Some((_, port)) => bind_retry(args.host, port).await?,
+        None => bind(args.host, args.port).await?,
+    };
     let addr = listener.local_addr()?;
     if addr.port() != args.port {
         println!("port {} 已被佔用，改用 {}", args.port, addr.port());
@@ -251,7 +279,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     drop(lock);
-    if args.path.is_some() && !args.no_browser {
+    if args.path.is_some() && !args.no_browser && restart.is_none() {
         shared.open_browser();
     }
 
@@ -271,6 +299,10 @@ async fn main() -> anyhow::Result<()> {
     tokio::select! {
         r = serve => r?,
         _ = tokio::signal::ctrl_c() => {}
+        _ = update::restart_requested() => {
+            drop(_registration);
+            update::relaunch(addr.port());
+        }
     }
     Ok(())
 }
@@ -315,6 +347,17 @@ async fn bind(host: IpAddr, port: u16) -> anyhow::Result<TcpListener> {
         }
     }
     Ok(TcpListener::bind(SocketAddr::new(host, 0)).await?)
+}
+
+/// 重新啟動時舊程序可能還沒完全放掉 port：同一個 port 重試幾秒，不行才照一般規則往上找。
+async fn bind_retry(host: IpAddr, port: u16) -> anyhow::Result<TcpListener> {
+    for _ in 0..50 {
+        if let Ok(l) = TcpListener::bind(SocketAddr::new(host, port)).await {
+            return Ok(l);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    bind(host, port).await
 }
 
 fn print_urls(addr: SocketAddr, tls: Option<&tls::Material>) {

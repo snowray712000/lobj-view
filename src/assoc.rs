@@ -424,8 +424,13 @@ pub fn router(shared: Arc<Shared>) -> Router {
 type ApiErr = (StatusCode, &'static str);
 
 fn guard(shared: &Shared, headers: &HeaderMap, write: bool) -> Result<(), ApiErr> {
+    guard_with(shared, headers, write, "伺服器監聽非本機位址，不開放變更副檔名關聯（請用 lobj-view register）")
+}
+
+/// 只允許本機使用者做的操作（副檔名關聯、線上更新）共用的檢查；`remote_msg` 是監聽非本機位址時的說明。
+pub(crate) fn guard_with(shared: &Shared, headers: &HeaderMap, write: bool, remote_msg: &'static str) -> Result<(), ApiErr> {
     if !shared.local_only() {
-        return Err((StatusCode::FORBIDDEN, "伺服器監聽非本機位址，不開放變更副檔名關聯（請用 lobj-view register）"));
+        return Err((StatusCode::FORBIDDEN, remote_msg));
     }
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("");
     let name = host.rsplit_once(':').map_or(host, |(h, p)| if p.chars().all(|c| c.is_ascii_digit()) { h } else { host });
