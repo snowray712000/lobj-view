@@ -45,6 +45,7 @@ body {
 #files li {
   padding: 0 6px;
   cursor: pointer;
+  user-select: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -77,4 +78,9 @@ body {
 
 .err {
   color: #e66a6a;
+}
+
+.hint {
+  color: #999;
+  font-size: 11px;
 }
