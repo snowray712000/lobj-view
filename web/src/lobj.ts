@@ -92,22 +92,24 @@ export interface LobjListing {
   /** 是否有上一層 */
   parent: boolean;
   dirs: string[];
+  /** dirs 之中其實是 .zip 檔的名稱（後端偷偷解壓，看起來像資料夾） */
+  zips: string[];
   files: LobjFileInfo[];
   /** 輸入的路徑若指到檔案，這裡是該檔名 */
   selected: string | null;
 }
 
 /** 列出資料夾；path 可用 / 或 \，也可以直接指到檔案。不可超出後端的 --dir。 */
-export async function listLobj(path = ''): Promise<LobjListing> {
-  const r = await fetch(`/api/lobj?path=${encodeURIComponent(path)}`);
+export async function listLobj(path = '', signal?: AbortSignal): Promise<LobjListing> {
+  const r = await fetch(`/api/lobj?path=${encodeURIComponent(path)}`, { signal });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
 /** 從後端取一個檔案（binary stream）。`.lobj`（舊格式）可用 jaw 指定上 / 下顎。 */
-export async function fetchLobj(name: string, jaw?: 'upper' | 'lower'): Promise<LobjData> {
+export async function fetchLobj(name: string, jaw?: 'upper' | 'lower', signal?: AbortSignal): Promise<LobjData> {
   const q = jaw ? `?jaw=${jaw}` : '';
-  const r = await fetch(`/api/lobj/${name.split("/").map(encodeURIComponent).join("/")}${q}`);
+  const r = await fetch(`/api/lobj/${name.split("/").map(encodeURIComponent).join("/")}${q}`, { signal });
   if (!r.ok) throw new Error(await r.text());
   const data = parseLobj(await r.arrayBuffer());
   data.fileHasColors = r.headers.get('X-Lobj-File-Colors') !== '0';

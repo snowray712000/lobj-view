@@ -2,6 +2,14 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.6.1
+- 新功能: .zip 當資料夾用：檔案瀏覽裡的 .zip 會顯示成 📦 資料夾，點進去就能看到裡面的模型檔，也可以貼 `資料夾/a.zip/子資料夾/檔案.stl` 這種路徑，zip 裡的 zip 也可以；原 .zip 完全不會被改動（只讀取），第一次進入時才在背景解壓到快取，之後再進入是即時的
+- 新功能: 太大的 zip 解壓要等時，左側會跳出「處理中… 名稱（N 秒）」提示與「取消」鈕，按下去就不會進去、也不會留下半套檔案，原本的畫面不變；載入模型時同樣可取消
+- 優化: 解壓時只取模型檔（.lobj / .lobj2 / .stl / .obj / .ply）與內層 zip，其他檔案不解出來，更快也更省空間；zip 被換掉（大小或修改時間不同）會自動重新解壓
+- 優化: 快取放在系統的 `lobj-view/zipcache` 資料夾，超過 7 天沒用會在下次啟動時自動清掉
+- 工程師筆記: 新增 `src/zipfs.rs`（zip crate、deflate）：解壓到 `<key>.partial` 再改名、`AtomicBool` 取消旗標每個 chunk 檢查、同一 zip 以 per-key Mutex 避免重複解壓（等待者也可取消）、`enclosed_name` 擋路徑穿越、略過符號連結、總量 8 GB / 檔數 50000 上限。`lobj_api.rs` 的 `resolve` 回傳 `Resolved{real, virt, base}`，路徑穿過 zip 時以 lexical normalize 找出 zip 祖先再 `descend`（可巢狀）；列表 JSON 新增 `zips`。取消機制：前端 `AbortController` 中斷連線 → axum 丟棄 handler → `CancelOnDrop` 設旗標。前端 `withBusy`（400 ms 內完成不顯示提示）#zip #cancel #AbortController #spawn_blocking 詳見 261119m
+- 已知限制: zip 內檔名若不是 UTF-8 旗標（舊版 Windows 壓縮軟體的 Big5 / GBK 檔名）可能顯示亂碼；加密 zip 無法開啟
+
 ### 1.5.1
 統整 1.4.1 ～ 1.4.6 的發佈版，細節請看下方各舊版本。
 - 新功能: 沒有 label 的模型（.stl / .obj / .ply，或 labels 全為 -1）載入後自動配色，優先挑畫面上還沒被用過的顏色；檔案自帶頂點色的預設疊加 0.2、保留原色（1.4.1）

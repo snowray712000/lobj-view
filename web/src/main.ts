@@ -542,7 +542,7 @@ async function syncSelection(): Promise<void> {
   await Promise.all(
     todo.map(async (f) => {
       try {
-        const built = buildMesh(await fetchLobj(f, jaw));
+        const built = buildMesh(await withBusy(f, (signal) => fetchLobj(f, jaw, signal)));
         // 期間選取已變（或已被取消）就丟棄，避免殘留
         if (!selected.has(f) || loaded.has(f)) {
           built.mesh.geometry.dispose();
@@ -565,6 +565,13 @@ async function syncSelection(): Promise<void> {
         failed.delete(f);
         scene.add(built.mesh);
       } catch (e) {
+        if (isAbort(e)) {
+          // 使用者按了取消：不載入，也取消選取
+          selected.delete(f);
+          markSelected();
+          renderPanel();
+          return;
+        }
         if (selected.has(f)) failed.set(f, e instanceof Error ? e.message : String(e));
       }
       renderInfo();
@@ -616,10 +623,58 @@ function clickFile(full: string, e: MouseEvent): void {
   void syncSelection();
 }
 
+// ---- 「處理中」提示：慢的請求（例如第一次進入大 zip 需解壓）顯示名稱、秒數與取消鈕 ----
+const busyEl = document.getElementById('busy')!;
+const busyTextEl = document.getElementById('busy-text')!;
+const busyJobs = new Map<number, { label: string; start: number; ctl: AbortController }>();
+let busySeq = 0;
+let busyTimer = 0;
+const BUSY_DELAY_MS = 400; // 很快完成的請求不要閃一下提示
+
+const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+
+function renderBusy(): void {
+  const now = Date.now();
+  const shown = [...busyJobs.values()].filter((j) => now - j.start >= BUSY_DELAY_MS);
+  busyEl.hidden = shown.length === 0;
+  if (!shown.length) return;
+  const first = shown[0];
+  const secs = Math.floor((now - first.start) / 1000);
+  const more = shown.length > 1 ? `等 ${shown.length} 項` : first.label;
+  busyTextEl.textContent = `處理中… ${more}（${secs} 秒）`;
+  busyTextEl.title = `${first.label}
+第一次進入 .zip 需要解壓縮；按取消就不會進去（原 zip 不會被改動）`;
+}
+
+/** 執行一個可取消的請求；超過一小段時間才顯示「處理中」提示。 */
+async function withBusy<T>(path: string, run: (signal: AbortSignal) => Promise<T>, ctl = new AbortController()): Promise<T> {
+  const id = ++busySeq;
+  busyJobs.set(id, { label: path.split('/').pop() || path || '/', start: Date.now(), ctl });
+  if (!busyTimer) busyTimer = window.setInterval(renderBusy, 250);
+  try {
+    return await run(ctl.signal);
+  } finally {
+    busyJobs.delete(id);
+    if (!busyJobs.size) {
+      clearInterval(busyTimer);
+      busyTimer = 0;
+    }
+    renderBusy();
+  }
+}
+
+document.getElementById('busy-cancel')!.addEventListener('click', () => {
+  for (const j of busyJobs.values()) j.ctl.abort();
+});
+
+let browseCtl: AbortController | null = null;
+
 /** 進入資料夾（或貼上的路徑；若是檔案則進入它所在的資料夾並開啟它）。 */
 async function browse(path: string): Promise<void> {
+  browseCtl?.abort(); // 新的瀏覽取代還沒完成的舊瀏覽
+  const mine = (browseCtl = new AbortController());
   try {
-    const l = await listLobj(path);
+    const l = await withBusy(path, (signal) => listLobj(path, signal), mine);
     curDir = l.path;
     pathEl.value = l.path ? `${l.path}/` : '';
     filesEl.replaceChildren();
@@ -627,7 +682,8 @@ async function browse(path: string): Promise<void> {
       const up = curDir.includes('/') ? curDir.slice(0, curDir.lastIndexOf('/')) : '';
       addItem('📁 ..', 'dir', () => void browse(up));
     }
-    for (const d of l.dirs) addItem(`📁 ${d}`, 'dir', () => void browse(join(curDir, d)));
+    const zips = new Set(l.zips ?? []);
+    for (const d of l.dirs) addItem(`${zips.has(d) ? '📦' : '📁'} ${d}`, 'dir', () => void browse(join(curDir, d)));
     curFiles = l.files.map((f) => join(curDir, f.name));
     for (const f of l.files) {
       const full = join(curDir, f.name);
@@ -649,6 +705,10 @@ async function browse(path: string): Promise<void> {
       }
     }
   } catch (e) {
+    if (isAbort(e)) {
+      if (browseCtl === mine) infoEl.textContent = '已取消（停留在原資料夾）';
+      return;
+    }
     infoEl.textContent = `無法開啟路徑：${e instanceof Error ? e.message : e}`;
   }
 }

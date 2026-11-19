@@ -2,6 +2,7 @@ mod assoc;
 mod instance;
 mod lobj_api;
 mod tls;
+mod zipfs;
 
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -169,6 +170,7 @@ async fn main() -> anyhow::Result<()> {
         dir = d;
         initial = Some(sel.unwrap_or_default());
     }
+    std::thread::spawn(zipfs::cleanup_cache); // 清掉殘留與過期的 zip 解壓快取
     let shared = instance::Shared::new(dir, initial);
     shared.set_local_only(args.host.is_loopback());
 
