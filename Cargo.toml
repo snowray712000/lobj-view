@@ -3,12 +3,14 @@ name = "lobj-view"
 version = "1.6.2"
 edition = "2024"
 description = "Web-based viewer for .lobj (labeled binary 3D object) files"
-# cargo install / cargo package ?芸葆??瑼?嚗eb/dist 敹?鈭? build 憟賭蒂銝韏瑞雿?
-# 摰?蝡臬停銝?閬?Node.js??include = ["src/**", "build.rs", "assets/lobj-view.ico", "web/dist/**", "Cargo.toml", "README.md", "doc/Versions.md"]
+# cargo install / cargo package 只帶這些檔案；web/dist 必須事先 build 好並一起發佈，
+# 安裝端就不需要 Node.js。
+include = ["src/**", "build.rs", "assets/lobj-view.ico", "web/dist/**", "Cargo.toml", "README.md", "doc/Versions.md"]
 readme = "README.md"
 repository = "https://github.com/snowray712000/lobj-view"
 
-# cargo binstall嚗?乩?頛?GitHub Release ??蝺刻陌瑼?瑼?閬?閬?.github/workflows/release.yml嚗?[package.metadata.binstall]
+# cargo binstall：直接下載 GitHub Release 的預編譯檔（檔名規則見 .github/workflows/release.yml）
+[package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ target }.{ archive-format }"
 bin-dir = "{ name }-v{ version }-{ target }/{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
@@ -22,7 +24,7 @@ axum = "0.8.9"
 axum-server = { version = "0.9.2", default-features = false, features = ["tls-rustls-ring"] }
 clap = { version = "4.6.8", features = ["derive"] }
 dirs = "7"
-# .lobj 霈撖怎??梁 crate嚗?皞 GitHub嚗璈??潛銝惜 ../.cargo/config.toml ??[patch] ?寧 ../lobj嚗府瑼??亦??改?
+# .lobj 讀寫的共用 crate，來源為 GitHub；本機開發由上層 ../.cargo/config.toml 的 [patch] 改用 ../lobj（該檔不入版控）
 lobj = { git = "https://github.com/snowray712000/lobj", tag = "v1.1.1" }
 local-ip-address = "0.6"
 mime_guess = "2.0.5"
@@ -34,8 +36,8 @@ tokio = { version = "1.54.1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 open = "5"
 serde_json = "1.0.154"
-zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
+zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.56.0"
