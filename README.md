@@ -2,7 +2,7 @@
 
 用瀏覽器檢視 `.lobj`（帶 label 的二進位 3D 物件）檔案的小工具。單一執行檔，內含前端，執行後用瀏覽器開網址即可，不需安裝 Node.js。
 
-> 目前版本 1.2.4：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
+> 目前版本 1.2.5：可用 `--dir` 指定根資料夾，在畫面左側瀏覽子資料夾或貼上路徑來開啟 `.lobj` / `.lobj2` / `.stl` / `.obj` / `.ply`（可多選同時顯示），依 label 上色；右側「物件」面板可調每個模型的 alpha 與 color；另有光源（固定 / 頭燈 / 三燈）、主題（淺 / 深 / 高對比）切換與 z 向上的世界座標。
 
 ## 安裝
 
@@ -87,13 +87,14 @@ lobj-view register            # .lobj .lobj2
 lobj-view register --ext stl,obj
 lobj-view register --all
 lobj-view status              # 各副檔名目前由誰開啟
-lobj-view unregister
+lobj-view unregister          # 取消註冊並還原成註冊前的樣子
 ```
 
 也可以在網頁左側狀態列按「預設程式…」勾選後註冊。只寫目前使用者的登錄（`HKCU`），不需要系統管理員。
 
 - `.lobj` / `.lobj2` 若沒有其他程式佔用，會直接成為預設。
 - `.stl` / `.ply` / `.obj` 通常已有預設程式，Windows 10 不允許程式自行覆蓋，只會註冊成「開啟方式」候選；請到「設定 > 預設應用程式」自己指定。
+- 註冊前會先記錄原狀（登錄 `HKCU\Software\lobj-view\AssocBackup`），`unregister` 依記錄還原；若你曾在系統設定把 lobj-view 指定成預設，會提示原本的預設程式，需自己改回。
 - 網頁的變更功能只在監聽本機位址時可用（`--host 0.0.0.0` 時停用），CLI 不受影響。
 - Linux / macOS 尚未支援。
 - 檔案圖示：Windows 的 exe 內嵌 `assets/lobj-view.ico`（多尺寸；`assets/lobj-view.png` 為大圖），註冊後 `.lobj` 等檔案會顯示它；若沒立刻更新，重開檔案總管或清除圖示快取。

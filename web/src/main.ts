@@ -652,11 +652,14 @@ interface AssocExt {
   registered: boolean;
   isDefault: boolean;
   current: string | null;
+  hasBackup: boolean;
+  previous: string | null;
 }
 interface AssocStatus {
   supported: boolean;
   exe: string;
   exts: AssocExt[];
+  notes?: string[];
 }
 const assocEl = document.getElementById('assoc')!;
 const assocBodyEl = document.getElementById('assoc-body')!;
@@ -674,9 +677,13 @@ async function assocCall(url: string, body?: unknown): Promise<Response> {
 }
 
 function assocState(e: AssocExt): string {
-  if (e.isDefault) return '✓ 預設';
-  if (e.registered) return e.current ? `已註冊（目前預設：${e.current}）` : '已註冊';
-  return e.current ? `未註冊（目前預設：${e.current}）` : '未註冊';
+  let s: string;
+  if (e.isDefault) s = '✓ 預設';
+  else if (e.registered) s = e.current ? `已註冊（目前預設：${e.current}）` : '已註冊';
+  else s = e.current ? `未註冊（目前預設：${e.current}）` : '未註冊';
+  // 註冊前已記錄原狀：取消註冊時會還原
+  if (e.hasBackup) s += `　↩ 還原為：${e.previous ?? '無預設'}`;
+  return s;
 }
 
 function renderAssoc(st: AssocStatus): void {
@@ -707,7 +714,7 @@ function renderAssoc(st: AssocStatus): void {
   }
   const reg = el('button', '註冊所選');
   reg.addEventListener('click', () => void assocAction('register'));
-  const unreg = el('button', '取消註冊所選');
+  const unreg = el('button', '取消註冊並還原所選');
   unreg.addEventListener('click', () => void assocAction('unregister'));
   const sys = el('button', '開啟 Windows 預設應用程式設定');
   sys.addEventListener('click', () => void assocCall('/api/assoc/settings'));
@@ -744,8 +751,9 @@ async function assocAction(action: 'register' | 'unregister'): Promise<void> {
   } else {
     const r = await assocCall('/api/assoc', { action, exts });
     if (r.ok) {
-      assocMsg = action === 'register' ? '已註冊' : '已取消註冊';
-      renderAssoc((await r.json()) as AssocStatus);
+      const st = (await r.json()) as AssocStatus;
+      assocMsg = [action === 'register' ? '已註冊' : '已取消註冊並還原', ...(st.notes ?? [])].join('。');
+      renderAssoc(st);
       return;
     }
     assocMsg = `失敗：${await r.text()}`;

@@ -2,6 +2,11 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.2.5
+- 新功能: 註冊前先記錄原狀（該副檔名的機碼原本是否存在、類別預設值、當時生效的預設程式），「取消註冊」改為依記錄**還原**：原本沒有的機碼刪除、原本有的值寫回。已註冊的副檔名會顯示「還原為：…」
+- 優化: 若你曾在 Windows 設定把 lobj-view 指定為預設，還原時會提示原本的預設程式，請自己改回（UserChoice 有雜湊保護，程式無法代改）
+- 工程師筆記: 備份存在 `HKCU\Software\lobj-view\AssocBackup\.ext`，已有備份時不覆蓋（避免把註冊後的狀態當成原狀）；1.2.4 以前註冊的沒有備份，取消註冊時只移除我們加的部分；最後一筆備份刪除時連同 `Software\lobj-view` 一併清掉 #assoc #backup #restore
+
 ### 1.2.4
 - 優化: Windows 的 lobj-view.exe 內嵌圖示（`assets/lobj-view.ico`）：藍底圓角方塊上一顆貼著三角網格的牙齒，網格中幾個三角形塗上 label 色（呼應依牙齒標記上色）；16–256 共七種尺寸，16 / 24 px 改用沒有網格的簡化版以保持清晰，`assets/lobj-view.png` 為大圖；網頁分頁也使用同一個圖示（`web/public/favicon.ico`），檔案總管、工作列，以及註冊為預設程式後的 .lobj 等檔案都會顯示它
 - 工程師筆記: 新增 `build.rs`（只在 Windows 目標以 `winresource` 嵌入圖示，需要 Windows SDK 的 rc.exe；找不到時只警告、不中斷建置）；`Cargo.toml` 的 `include` 加入 `build.rs` 與 `.ico`，`cargo install` 才編得起來 #icon #winresource #build-rs

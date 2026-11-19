@@ -9,6 +9,11 @@
 //!   已被其他程式佔用的（如 `.stl` `.obj`）不會被搶走：Windows 10 的 `UserChoice` 有雜湊保護，
 //!   程式無法靜默覆蓋，只能由使用者在「設定 > 預設應用程式」自己指定。
 //!
+//! **還原**：第一次註冊某個副檔名前，會把原狀記在 `HKCU\Software\lobj-view\AssocBackup\.ext`
+//! （`.ext` 機碼原本是否存在、類別預設值、`OpenWithProgids` 是否已含我們、當時生效的預設程式）。
+//! `unregister` 依記錄還原：原本沒有的機碼就刪掉，原本有的值就寫回。唯一還原不了的是 `UserChoice`
+//! （使用者在系統設定指定 lobj-view 後由 Windows 寫入，有雜湊保護）：這時會提示原本的預設程式，請使用者自己改回。
+//!
 //! 網頁設定頁與 CLI（`register` / `unregister` / `status`）共用這裡的邏輯。網頁端的寫入端點只在
 //! 監聽本機位址時啟用，並檢查 `Host` 與自訂標頭（見 [`router`]）。
 
@@ -41,6 +46,10 @@ pub struct ExtStatus {
     pub is_default: bool,
     /// 目前生效的預設程式 ProgId（沒有則 None）。
     pub current: Option<String>,
+    /// 註冊前已記錄原狀（取消註冊時會還原）。
+    pub has_backup: bool,
+    /// 註冊前生效的預設程式 ProgId（記錄時就沒有、或就是 lobj-view 則為 None）。
+    pub previous: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +57,8 @@ pub struct Status {
     pub supported: bool,
     pub exe: String,
     pub exts: Vec<ExtStatus>,
+    /// 操作後仍需要使用者處理的事項（例如要到系統設定改回原本的預設程式）。
+    pub notes: Vec<String>,
 }
 
 impl Status {
@@ -57,7 +68,9 @@ impl Status {
             "exe": self.exe,
             "exts": self.exts.iter().map(|e| json!({
                 "ext": e.ext, "registered": e.registered, "isDefault": e.is_default, "current": e.current,
+                "hasBackup": e.has_backup, "previous": e.previous,
             })).collect::<Vec<_>>(),
+            "notes": self.notes,
         })
     }
 }
@@ -85,6 +98,7 @@ mod imp {
     use winreg::{RegKey, RegValue};
 
     const CLASSES: &str = r"Software\Classes";
+    const BACKUP: &str = r"Software\lobj-view\AssocBackup";
 
     fn hkcu() -> RegKey {
         RegKey::predef(HKEY_CURRENT_USER)
@@ -128,15 +142,61 @@ mod imp {
             .iter()
             .map(|e| {
                 let current = effective(e);
+                let backup = backup_read(e);
                 ExtStatus {
                     ext: e.to_string(),
                     registered: has_open_with(e),
                     is_default: current.as_deref() == Some(PROG_ID),
                     current,
+                    has_backup: backup.is_some(),
+                    previous: backup.and_then(|b| b.prev_effective),
                 }
             })
             .collect();
-        Ok(Status { supported: true, exe: exe_path()?, exts })
+        Ok(Status { supported: true, exe: exe_path()?, exts, notes: Vec::new() })
+    }
+
+    /// 註冊前的原狀。
+    struct Backup {
+        ext_existed: bool,
+        had_open_with: bool,
+        class_default: Option<String>,
+        prev_effective: Option<String>,
+    }
+
+    fn backup_path(ext: &str) -> String {
+        format!(r"{BACKUP}\.{ext}")
+    }
+
+    fn backup_read(ext: &str) -> Option<Backup> {
+        let k = hkcu().open_subkey(backup_path(ext)).ok()?;
+        Some(Backup {
+            ext_existed: k.get_value::<u32, _>("ExtKeyExisted").unwrap_or(1) != 0,
+            had_open_with: k.get_value::<u32, _>("HadOpenWith").unwrap_or(0) != 0,
+            class_default: k.get_value::<String, _>("ClassDefault").ok(),
+            prev_effective: k.get_value::<String, _>("PrevEffective").ok(),
+        })
+    }
+
+    /// 只在第一次記錄；已有記錄就不覆蓋（否則會把「已註冊後」的狀態誤當成原狀）。
+    fn backup_save(ext: &str) -> Result<(), String> {
+        let root = hkcu();
+        if root.open_subkey(backup_path(ext)).is_ok() {
+            return Ok(());
+        }
+        let class_key = root.open_subkey(format!(r"{CLASSES}\.{ext}")).ok();
+        let class_default = class_key.as_ref().and_then(|k| k.get_value::<String, _>("").ok());
+        let prev = effective(ext).filter(|p| p != PROG_ID);
+        let (k, _) = root.create_subkey(backup_path(ext)).map_err(io)?;
+        k.set_value("ExtKeyExisted", &(class_key.is_some() as u32)).map_err(io)?;
+        k.set_value("HadOpenWith", &(has_open_with(ext) as u32)).map_err(io)?;
+        if let Some(v) = class_default {
+            k.set_value("ClassDefault", &v).map_err(io)?;
+        }
+        if let Some(v) = prev {
+            k.set_value("PrevEffective", &v).map_err(io)?;
+        }
+        Ok(())
     }
 
     fn notify() {
@@ -163,6 +223,7 @@ mod imp {
         cmd.set_value("", &format!("\"{exe}\" \"%1\"")).map_err(io)?;
 
         for ext in exts {
+            backup_save(ext)?; // 動任何東西之前先記錄原狀
             let (key, _) = root.create_subkey(format!(r"{CLASSES}\.{ext}")).map_err(io)?;
             let (owp, _) = key.create_subkey("OpenWithProgids").map_err(io)?;
             owp.set_raw_value(PROG_ID, &RegValue { bytes: Cow::Borrowed(&[]), vtype: REG_NONE })
@@ -176,16 +237,61 @@ mod imp {
         status()
     }
 
+    /// 取消註冊並依註冊前的記錄還原。沒有記錄（1.2.4 以前註冊的）就只移除我們加的部分。
     pub fn unregister(exts: &[String]) -> Result<Status, String> {
         let root = hkcu();
+        let mut notes = Vec::new();
         for ext in exts {
-            if let Ok(owp) = root.open_subkey_with_flags(format!(r"{CLASSES}\.{ext}\OpenWithProgids"), KEY_SET_VALUE) {
-                let _ = owp.delete_value(PROG_ID);
-            }
-            if let Ok(key) = root.open_subkey_with_flags(format!(r"{CLASSES}\.{ext}"), KEY_READ | KEY_SET_VALUE) {
-                if key.get_value::<String, _>("").is_ok_and(|v| v == PROG_ID) {
-                    let _ = key.delete_value("");
+            // 沒有記錄時的假設：機碼原本就在、OpenWithProgids 原本沒有我們、原本沒有類別預設值
+            let b = backup_read(ext).unwrap_or(Backup {
+                ext_existed: true,
+                had_open_with: false,
+                class_default: None,
+                prev_effective: None,
+            });
+
+            let owp_path = format!(r"{CLASSES}\.{ext}\OpenWithProgids");
+            if !b.had_open_with {
+                if let Ok(owp) = root.open_subkey_with_flags(&owp_path, KEY_SET_VALUE | KEY_READ) {
+                    let _ = owp.delete_value(PROG_ID);
+                    let empty = owp.enum_values().next().is_none() && owp.enum_keys().next().is_none();
+                    drop(owp);
+                    if empty {
+                        let _ = root.delete_subkey(&owp_path);
+                    }
                 }
+            }
+            let class_path = format!(r"{CLASSES}\.{ext}");
+            if let Ok(key) = root.open_subkey_with_flags(&class_path, KEY_READ | KEY_SET_VALUE) {
+                if key.get_value::<String, _>("").is_ok_and(|v| v == PROG_ID) {
+                    match &b.class_default {
+                        Some(v) if v != PROG_ID => key.set_value("", v).map_err(io)?,
+                        _ => {
+                            let _ = key.delete_value("");
+                        }
+                    }
+                }
+                let empty = key.enum_values().next().is_none() && key.enum_keys().next().is_none();
+                drop(key);
+                // 這個機碼是我們建立的、現在也空了 → 刪掉，回到註冊前
+                if empty && !b.ext_existed {
+                    let _ = root.delete_subkey(&class_path);
+                }
+            }
+            // UserChoice 有雜湊保護，只能由使用者在系統設定改
+            if effective(ext).as_deref() == Some(PROG_ID) {
+                notes.push(match &b.prev_effective {
+                    Some(p) => format!(".{ext} 目前的預設程式仍是 lobj-view（你在系統設定指定過）；原本是 {p}，請到 Windows「設定 > 預設應用程式」改回"),
+                    None => format!(".{ext} 目前的預設程式仍是 lobj-view（你在系統設定指定過），請到 Windows「設定 > 預設應用程式」改選其他程式"),
+                });
+            }
+            let _ = root.delete_subkey_all(backup_path(ext));
+        }
+        // 沒有任何記錄了，就把備份機碼一併清掉
+        if root.open_subkey(BACKUP).is_ok_and(|k| k.enum_keys().next().is_none()) {
+            let _ = root.delete_subkey(BACKUP);
+            if root.open_subkey(r"Software\lobj-view").is_ok_and(|k| k.enum_keys().next().is_none() && k.enum_values().next().is_none()) {
+                let _ = root.delete_subkey(r"Software\lobj-view");
             }
         }
         // 已經沒有任何副檔名指向它，就把 ProgId 一併移除
@@ -193,7 +299,9 @@ mod imp {
             let _ = root.delete_subkey_all(format!(r"{CLASSES}\{PROG_ID}"));
         }
         notify();
-        status()
+        let mut st = status()?;
+        st.notes = notes;
+        Ok(st)
     }
 
     pub fn open_default_apps_settings() -> Result<(), String> {
@@ -213,8 +321,16 @@ mod imp {
             exe: std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
             exts: ALL_EXTS
                 .iter()
-                .map(|e| ExtStatus { ext: e.to_string(), registered: false, is_default: false, current: None })
+                .map(|e| ExtStatus {
+                    ext: e.to_string(),
+                    registered: false,
+                    is_default: false,
+                    current: None,
+                    has_backup: false,
+                    previous: None,
+                })
                 .collect(),
+            notes: Vec::new(),
         })
     }
     pub fn register(_: &[String]) -> Result<Status, String> {
@@ -247,7 +363,18 @@ pub fn format_status(s: &Status) -> String {
                 None => "未註冊".to_string(),
             }
         };
-        out.push_str(&format!("  .{:<6} {state}\n", e.ext));
+        let restore = match (e.has_backup, &e.previous) {
+            (true, Some(p)) => format!("  [取消註冊會還原為: {p}]"),
+            (true, None) => "  [取消註冊會還原為: 無預設]".to_string(),
+            _ => String::new(),
+        };
+        out.push_str(&format!("  .{:<6} {state}{restore}\n", e.ext));
+    }
+    for n in &s.notes {
+        out.push_str(&format!("\n注意: {n}"));
+    }
+    if !s.notes.is_empty() {
+        out.push('\n');
     }
     out
 }
