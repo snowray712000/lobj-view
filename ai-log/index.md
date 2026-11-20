@@ -58,3 +58,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: unrestricted, local_only, resolve_ex, list_dir_ex, virt_of, parent_virt, up, --hud-w, hud-resize, localStorage, flex-wrap, Cargo.lock httparse, 1.10.1, 1.10.2
 - [2026/s4/261120f_i18n_lang_v1103.md](2026/s4/261120f_i18n_lang_v1103.md) — 1.10.3: multilingual UI — `web/src/i18n.ts` dictionaries (zh default, en), `data-i18n*` attributes on static HTML, live re-render via `onLangChange`; status-bar button always labelled `lang` opens a language menu; choice saved in localStorage.
   Keywords: i18n, lang, lang-btn, lang-menu, t(), Dict, applyStatic, onLangChange, setLang, data-i18n, localStorage lobj-view-lang, English, Vietnamese, 1.10.3
+- [2026/s4/261120g_i18n_vietnamese_v1104.md](2026/s4/261120g_i18n_vietnamese_v1104.md) — 1.10.4: Vietnamese (`vi`, Tiếng Việt) dictionary added to `i18n.ts`; lang menu now 中文 / English / Tiếng Việt.
+  Keywords: i18n, vi, Vietnamese, Tiếng Việt, Dict, LANGS, DICTS, hàm trên, hàm dưới, 1.10.4

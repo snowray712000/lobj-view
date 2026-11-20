@@ -1,5 +1,5 @@
 // 多語言：介面字串集中在這裡。中文（zh）是基準字典，其他語言必須有一樣的 key（型別檢查會擋缺漏）。
-// 新增語言（例如越南文 vi）：1. 加一份 `const vi: Dict = { ... }`；2. 加到 `DICTS` 與 `LANGS`。
+// 新增語言（例如泰文 th）：1. 加一份 `const th: Dict = { ... }`；2. 加到 `type Lang`、`DICTS` 與 `LANGS`。
 // 靜態 HTML 用 data-i18n（textContent）/ data-i18n-title / data-i18n-placeholder 標記，切換時由 applyStatic 套用；
 // 動態產生的字串直接用 `t().xxx`，切換語言時由 main.ts 的 onLangChange 回呼重繪。
 
@@ -307,15 +307,163 @@ const en: Dict = {
   sentenceSep: '. ',
 };
 
-export type Lang = 'zh' | 'en';
+// 越南文（1.10.4）：術語以牙科 / 3D 常用說法為主（hàm trên / hàm dưới = 上 / 下顎，nhãn = label，độ cong = 曲率）
+const vi: Dict = {
+  hudResizeTip: 'Kéo để đổi độ rộng khung bên trái (nhấp đúp để khôi phục)',
+  verTip: 'Xem lịch sử phiên bản',
+  updateTip: 'Kiểm tra phiên bản mới trên GitHub',
+  checkUpdate: 'Kiểm tra cập nhật',
+  langTip: 'Đổi ngôn ngữ',
+  light: 'Ánh sáng:',
+  lightTip: 'Cố định: ánh sáng không đổi theo góc nhìn; Đèn đầu: ánh sáng theo vị trí mắt; Ba đèn: đèn đầu thêm một đèn mỗi bên',
+  lightFixed: 'Cố định',
+  lightHead: 'Đèn đầu (theo mắt)',
+  lightThree: 'Ba đèn (mắt + trái + phải)',
+  grid: 'Lưới',
+  ortho: 'Chiếu trực giao',
+  single: 'Một mặt',
+  singleTip: 'Chỉ vẽ mặt trước của lưới (mặt ngược chiều kim đồng hồ), không vẽ mặt sau',
+  theme: 'Giao diện:',
+  themeAuto: 'Tự động (hệ thống)',
+  themeLight: 'Sáng',
+  themeDark: 'Tối',
+  themeHcLight: 'Sáng tương phản cao',
+  themeHcDark: 'Tối tương phản cao',
+  assocOpen: 'Ứng dụng mặc định…',
+  assocOpenTip: 'Đặt lobj-view làm ứng dụng mở các loại tệp này (nhấp đúp vào tệp để mở)',
+  status3Tip: 'Trạng thái máy chủ (cập nhật khoảng mỗi 5 giây)',
+  serverLoading: 'Máy chủ: …',
+  browser: 'Chọn tệp',
+  pathPh: 'Dán đường dẫn rồi nhấn Enter (/ hoặc \\ đều được)',
+  jawRePh: 'regex cho hàm trên, phân cách bằng ;',
+  selectHint: 'Ctrl/⌘ + nhấp để chọn thêm, Shift + nhấp để chọn một dải',
+  cancel: 'Hủy',
+  details: 'Chi tiết',
+  assocTitle: 'Ứng dụng mặc định',
+  updateTitle: 'Cập nhật lobj-view',
+
+  notSecure: ' — không phải secure context, hãy dùng localhost / ssh -L',
+  healthErr: (e) => `không kết nối được (${e})`,
+
+  jawSrcManual: 'chỉ định riêng',
+  jawSrcRegex: 'theo regex',
+  jawSrcLabel: 'theo nhãn răng',
+  jawSrcNoTooth: 'nhãn không có răng, theo regex tên tệp',
+  jawWhyConflict: '; bất thường: tên tệp mâu thuẫn với kết quả',
+  jawWhyBoth: '; bất thường: nhãn có cả răng hàm trên và hàm dưới',
+  jawBadgeTip: (j, src, why) => `${j} (${src})${why}`,
+  jawReBad: (segs) => `Đã bỏ qua regex sai cú pháp: ${segs.join(', ')}\n`,
+  jawReTip: 'Hàm trên / hàm dưới của .lobj cũ (cách tạm thời): tên tệp khớp bất kỳ regex nào là upper, ngược lại là lower.\nPhân cách bằng ;, không phân biệt hoa thường. Có thể chỉ định riêng từng tệp trên thẻ đối tượng bên phải.',
+
+  convTitle: (name) => `Chuyển sang .lobj2: ${name}`,
+  convDescLobj: (jaw) => `Đổi nhãn sang FDI theo ${jaw} và lưu thành .lobj2 cùng tên, cùng thư mục; tệp mới giữ thời gian tạo / sửa / truy cập của tệp cũ.`,
+  convDescOther: 'Chỉ đổi phần mở rộng, lưu thành .lobj2 cùng tên, cùng thư mục (không có nhãn, tất cả nhãn là -1); tệp mới giữ thời gian tạo / sửa / truy cập của tệp cũ.',
+  convDelete: 'Xóa tệp cũ sau khi chuyển (mặc định)',
+  convKeep: 'Giữ tệp cũ',
+  convOk: 'Chuyển',
+  converting: 'Đang chuyển…',
+  convDone: (p, deleted) => `Đã chuyển thành ${p}${deleted ? ', đã xóa tệp cũ' : ''}`,
+  failed: (e) => `Thất bại: ${e}`,
+  convBtn: 'sang lobj2',
+  convBtnTip: (jaw, legacy) =>
+    `Lưu tệp này thành .lobj2 theo ${jaw}${legacy ? ' (nhãn đổi sang FDI)' : ' (không có nhãn, chỉ đổi phần mở rộng)'}; tệp mới giữ ngày của tệp cũ`,
+
+  objects: (n) => `Đối tượng (${n})`,
+  noSelection: 'Chưa chọn tệp nào',
+  meshInfo: (v, t) => `${v} đỉnh, ${t} tam giác`,
+  cardJawTip: 'Tệp này là hàm trên hay hàm dưới; "Mặc định" = theo regex bên trái',
+  jawDefault: 'Mặc định',
+  jawUpper: 'upper (trên)',
+  jawLower: 'lower (dưới)',
+  wireTip: 'Hiện cạnh của lưới (đường đen)',
+  normalTip: 'Hiện pháp tuyến của mỗi đỉnh (đường xanh)',
+  curvTip: 'Tô màu theo độ cong (Normal Variation, tính dọc theo cạnh); thay cho color',
+  curvSigned: 'lồi/lõm',
+  curvSignedTip: 'Trung bình độ cong pháp tuyến có dấu của các cạnh kề: đỏ = lồi (múi răng, gờ), xanh = lõm (rãnh, đường viền nướu)',
+  curvMaxTip: '|κ| lớn nhất của các cạnh kề: mép và gờ sáng nhất',
+  curvMinTip: '|κ| nhỏ nhất của các cạnh kề: chỉ sáng ở nơi cong theo mọi hướng (như đỉnh múi răng)',
+  clip: 'cắt',
+  clipTipSigned: (v) => `Dải màu = phân vị thứ ${v} của ±|κ|; càng nhỏ tương phản càng mạnh (lồi lõm nhỏ cũng có màu), càng lớn càng ít bị nhiễu cực trị ảnh hưởng`,
+  clipTipSeq: (lo, v) => `Dải màu = phân vị ${lo}–${v}; 99.5 tương ứng clip_percentile của Python`,
+  smooth: 'làm mịn',
+  smoothTip: 'Trước khi tính độ cong, lấy trung bình pháp tuyến với các đỉnh kề bấy nhiêu lần (đỉnh không di chuyển) để khử nhiễu quét, giữ lồi lõm ở tỉ lệ lớn; chỉ ảnh hưởng màu độ cong. 0 = tắt',
+  smoothOff: 'tắt',
+  mix: 'trộn',
+  origShort: '∅',
+  origTip: 'Màu gốc (không đặt)',
+  legendPending: 'tính sau khi tải…',
+  concave: 'lõm',
+  convex: 'lồi',
+  legendTipSigned: (hi, r, clip) => `κ đơn vị 1/mm; ±${hi} ≈ bán kính cong ${r} mm (cắt ở phân vị ${clip} của |κ|)`,
+  legendTipSeq: (lo, hi) => `κ đơn vị 1/mm; tô màu sau khi cắt ở phân vị ${lo}%–${hi}%`,
+  lobj2JawBoth: '\njaw: có răng của cả hai hàm (bất thường)',
+  lobj2JawLabel: (j) => `\njaw: ${j} (theo nhãn răng)`,
+  lobj2JawRegex: (j) => `\njaw: ${j} (nhãn không có răng, theo regex tên tệp)`,
+  loadFailed: (e) => `Tải thất bại: ${e}`,
+  loading: 'Đang tải…',
+
+  busyMore: (n) => `${n} mục`,
+  busyText: (what, secs) => `Đang xử lý… ${what} (${secs} giây)`,
+  busyTip: (label) => `${label}\nLần đầu mở .zip cần giải nén; nhấn Hủy để không vào (tệp zip gốc không bị thay đổi)`,
+  emptyDir: 'Thư mục --dir không có .lobj / .lobj2 / .stl / .obj / .ply',
+  browseCanceled: 'Đã hủy (vẫn ở thư mục cũ)',
+  cannotOpenPath: (e) => `Không mở được đường dẫn: ${e}`,
+
+  serverPrefix: 'Máy chủ: ',
+  people: (p, t) => `${p} người / ${t} tab`,
+  peopleTip: 'Người = địa chỉ IP nguồn khác nhau; các kết nối chuyển tiếp qua ssh -L đều đến từ 127.0.0.1 nên chỉ tính là một',
+  cpuTip: (cores, proc) => `Mức sử dụng tổng của ${cores} lõi logic trên máy chủ; riêng lobj-view khoảng ${proc}%`,
+  mem: (u, t) => `Bộ nhớ ${u}/${t} GB`,
+  memTip: (mb) => `Toàn máy chủ; riêng lobj-view ${mb} MB`,
+  gpuTip: (name, u, t) => `${name}; VRAM ${u}/${t} MB. Đây là GPU của máy chủ; vẽ 3D dùng GPU của máy đang mở trình duyệt`,
+  sampling: 'Đang lấy mẫu tài nguyên…',
+
+  versionsErr: (e) => `Không lấy được lịch sử phiên bản: ${e}`,
+  hasUpdate: (v) => `⬆ Có bản mới v${v}`,
+  updCurrent: (c, l) => `Phiên bản hiện tại v${c}, mới nhất trên GitHub v${l}`,
+  updViewOnGithub: 'Xem phiên bản này trên GitHub',
+  updLatest: 'Đã là phiên bản mới nhất.',
+  updCannot: 'Hiện không thể cập nhật trực tuyến',
+  updApply: (v) => `Cập nhật lên v${v} và khởi động lại`,
+  updApplyHint: 'Sẽ tải phiên bản mới thay cho tệp thực thi hiện tại; sau khi máy chủ khởi động lại, trang này tự tải lại (các mô hình đang mở cần tải lại).',
+  updDownloading: (v) => `Đang tải v${v}… (vài giây đến một phút tùy tốc độ mạng)`,
+  updFailed: (e) => `Cập nhật thất bại: ${e}`,
+  updRestarting: (v) => `Đã cập nhật lên v${v}, đang khởi động lại…`,
+  updTimeout: 'Hết thời gian chờ máy chủ khởi động lại; hãy tự tải lại trang này (hoặc chạy lại lobj-view).',
+  updChecking: 'Đang kiểm tra…',
+  updCheckErr: (e) => `Không kiểm tra được cập nhật: ${e}`,
+
+  assocDefault: '✓ mặc định',
+  assocRegisteredCur: (c) => `đã đăng ký (mặc định hiện tại: ${c})`,
+  assocRegistered: 'đã đăng ký',
+  assocUnregCur: (c) => `chưa đăng ký (mặc định hiện tại: ${c})`,
+  assocUnreg: 'chưa đăng ký',
+  assocRestore: (p) => `  ↩ khôi phục về: ${p ?? 'không có mặc định'}`,
+  assocUnsupported: 'Hiện chỉ hỗ trợ liên kết loại tệp trên Windows (chưa hỗ trợ Linux / macOS).',
+  assocRegister: 'Đăng ký mục đã chọn',
+  assocUnregister: 'Hủy đăng ký và khôi phục mục đã chọn',
+  assocSysSettings: 'Mở cài đặt ứng dụng mặc định của Windows',
+  assocHint:
+    'Sau khi đăng ký, lobj-view sẽ xuất hiện trong danh sách "Mở bằng" khi nhấp chuột phải vào tệp; nhấp đúp vào tệp sẽ giao cho lobj-view đang chạy (nếu chưa chạy thì khởi động và mở trình duyệt). .lobj / .lobj2 sẽ trở thành mặc định nếu chưa có ứng dụng khác chiếm; ' +
+    '.stl / .ply / .obj thường đã có ứng dụng mặc định và Windows không cho chương trình tự ghi đè, nên sau khi đăng ký hãy nhấn nút bên phải để tự chọn trong cài đặt hệ thống.',
+  assocExe: (exe) => `Tệp thực thi: ${exe}`,
+  assocErr: (e) => `Không lấy được trạng thái liên kết: ${e}`,
+  assocNeedOne: 'Hãy chọn ít nhất một phần mở rộng',
+  assocDoneReg: 'Đã đăng ký',
+  assocDoneUnreg: 'Đã hủy đăng ký và khôi phục',
+  sentenceSep: '. ',
+};
+
+export type Lang = 'zh' | 'en' | 'vi';
 
 /** 可選語言：value 與該語言自己的名稱（選單上用原文顯示，不隨介面語言翻譯）。 */
 export const LANGS: readonly { code: Lang; name: string; html: string }[] = [
   { code: 'zh', name: '中文', html: 'zh-Hant' },
   { code: 'en', name: 'English', html: 'en' },
+  { code: 'vi', name: 'Tiếng Việt', html: 'vi' },
 ];
 
-const DICTS: Record<Lang, Dict> = { zh, en };
+const DICTS: Record<Lang, Dict> = { zh, en, vi };
 const DEFAULT_LANG: Lang = 'zh';
 const KEY = 'lobj-view-lang';
 
