@@ -146,6 +146,8 @@ const infoEl = document.getElementById('info')!;
 // 已載入的模型：key 為相對 --dir 的完整路徑。可同時顯示多個檔案。
 interface Loaded {
   mesh: THREE.Mesh;
+  /** 依牙位 label 判斷的上 / 下顎（FDI；沒有牙 = undefined，此時要退回檔名判定） */
+  labelJaw?: Jaw | 'both';
   /** 載入時用的上 / 下顎（舊 .lobj 才有）；判定改變時據此決定要不要重載 */
   jaw?: 'upper' | 'lower';
   info: string;
@@ -195,25 +197,49 @@ const regexJaw = (f: string): Jaw => {
   return jawRegexes.some((r) => r.test(n)) ? 'upper' : 'lower';
 };
 const effectiveJaw = (f: string): Jaw => jawOf.get(f) ?? regexJaw(f);
+/** FDI labels 裡有哪一顎的牙：只有上 / 只有下 / 兩邊都有（'both'）/ 沒有牙（undefined）。1、2、5、6 象限為上顎，3、4、7、8 為下顎。 */
+function jawFromLabels(labels: Int8Array | null): Jaw | 'both' | undefined {
+  if (!labels) return undefined;
+  let up = false, lo = false;
+  for (const [l] of labelCounts(labels)) {
+    const q = Math.floor(l / 10), t = l % 10;
+    if (l < 11 || l > 85 || t < 1 || t > 8 || q < 1 || q > 8 || (q >= 5 && t > 5)) continue; // 不是牙（牙齦 0、-1、bracket 100 …）
+    if (q === 1 || q === 2 || q === 5 || q === 6) up = true;
+    else lo = true;
+  }
+  return up && lo ? 'both' : up ? 'upper' : lo ? 'lower' : undefined;
+}
 /** 檔案清單每個舊 .lobj 前面的小標記：up / lo；其他格式（label 已是 FDI）留空。 */
 function updateJawBadges(): void {
   for (const li of filesEl.querySelectorAll<HTMLLIElement>('li[data-path]')) {
     const f = li.dataset.path!;
     const b = li.querySelector<HTMLElement>('.jaw-badge');
     if (!b) continue;
-    if (!isJawFile(f)) {
+    let j: Jaw, src: string, bad: boolean, why = '';
+    if (isJawFile(f)) {
+      j = effectiveJaw(f);
+      src = jawOf.has(f) ? '個別指定' : '依 regex 判定';
+      bad = jawConflict(f, j);
+      if (bad) why = '；異常：檔名文字與判定結果矛盾';
+    } else if (f.toLowerCase().endsWith('.lobj2') && loaded.has(f)) {
+      // .lobj2 要載入後才看得到 label：牙位能判定就用牙位，否則（沒有牙，例如 -1 全滿）退回檔名 regex
+      const lj = loaded.get(f)!.labelJaw;
+      j = lj && lj !== 'both' ? lj : effectiveJaw(f);
+      src = lj && lj !== 'both' ? '依牙位 label' : jawOf.has(f) ? '個別指定' : 'label 無牙，依檔名 regex 判定';
+      bad = lj === 'both' || jawConflict(f, j);
+      if (lj === 'both') why = '；異常：label 同時有上顎與下顎的牙';
+      else if (bad) why = '；異常：檔名文字與判定結果矛盾';
+    } else {
       b.replaceChildren();
       b.title = '';
       continue;
     }
-    const j = effectiveJaw(f);
-    const bad = jawConflict(f, j);
-    // 只顯示一個：up / lo（綠）；判定與檔名字面矛盾時顯示 er（紅）
+    // 只顯示一個：up / lo（綠）；異常顯示 er（紅）
     const s = document.createElement('span');
     s.textContent = bad ? 'er' : j === 'upper' ? 'up' : 'lo';
     s.className = bad ? 'bad' : 'on';
     b.replaceChildren(s);
-    b.title = `${j}（${jawOf.has(f) ? '個別指定' : '依 regex 判定'}）` + (bad ? '；異常：檔名文字與判定結果矛盾' : '');
+    b.title = `${j}（${src}）${why}`;
   }
 }
 
@@ -331,7 +357,7 @@ function buildMesh(data: LobjData): Loaded {
   const counts = [...labelCounts(data.labels)].map(([l, n]) => `${l}:${n}`).join(' ');
   const info = `頂點 ${data.vertices.length / 3}、三角形 ${data.triangles.length / 3}` + (counts ? `\nlabels ${counts}` : '');
   const unlabeled = !data.labels || data.labels.every((l) => l < 0);
-  return { mesh, info, orig, unlabeled, fileHasColors: data.fileHasColors !== false };
+  return { mesh, info, orig, unlabeled, fileHasColors: data.fileHasColors !== false, labelJaw: jawFromLabels(data.labels) };
 }
 
 // --- 右側物件面板：每個已選檔案一張卡片（alpha、color） ---
@@ -731,13 +757,22 @@ function renderLegend(el: HTMLElement): void {
   el.append(bar, ticks);
 }
 
+/** .lobj2 的卡片資訊多一行 jaw：牙位 label 能判斷就用牙位，沒有牙就依檔名 regex。 */
+function lobj2JawNote(f: string, l: Loaded): string {
+  if (!f.toLowerCase().endsWith('.lobj2')) return '';
+  if (l.labelJaw === 'both') return '\njaw：上下顎的牙都有（異常）';
+  if (l.labelJaw) return `\njaw：${l.labelJaw}（依牙位 label）`;
+  return `\njaw：${effectiveJaw(f)}（label 沒有牙，依檔名 regex）`;
+}
+
 /** 更新右側各卡片的資訊（頂點、三角形、labels；載入中 / 失敗）。 */
 function renderInfo(): void {
+  updateJawBadges(); // .lobj2 的標記要等載入後（看得到 label）才有
   for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.curv-legend')) renderLegend(el);
   for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.card-info')) {
     const f = el.dataset.path!;
     const l = loaded.get(f);
-    el.textContent = l ? l.info : failed.has(f) ? `載入失敗：${failed.get(f)}` : '載入中…';
+    el.textContent = l ? l.info + lobj2JawNote(f, l) : failed.has(f) ? `載入失敗：${failed.get(f)}` : '載入中…';
   }
 }
 
