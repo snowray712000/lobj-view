@@ -154,7 +154,7 @@ interface Loaded {
   /** 載入時用的上 / 下顎（舊 .lobj 才有）；判定改變時據此決定要不要重載 */
   jaw?: 'upper' | 'lower';
   /** 頂點數、三角形數與 label 統計（顯示時才依目前語言組字串） */
-  info: { verts: number; tris: number; counts: string };
+  info: { verts: number; tris: number; counts: string; labelKinds: number };
   /** 檔案原本的頂點顏色，color 屬性設回「不設定」時用來還原 */
   orig: Float32Array;
   /** 沒有任何 label（.stl / .obj / .ply，或 labels 全為 -1）；載入時會自動配一個顏色 */
@@ -356,8 +356,9 @@ function buildMesh(data: LobjData): Loaded {
     geom,
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: meshSide() }),
   );
-  const counts = [...labelCounts(data.labels)].map(([l, n]) => `${l}:${n}`).join(' ');
-  const info = { verts: data.vertices.length / 3, tris: data.triangles.length / 3, counts };
+  const lc = labelCounts(data.labels);
+  const counts = [...lc].map(([l, n]) => `${l}:${n}`).join(' ');
+  const info = { verts: data.vertices.length / 3, tris: data.triangles.length / 3, counts, labelKinds: lc.size };
   const unlabeled = !data.labels || data.labels.every((l) => l < 0);
   return { mesh, info, orig, unlabeled, fileHasColors: data.fileHasColors !== false, labelJaw: jawFromLabels(data.labels) };
 }
@@ -772,13 +773,31 @@ function renderInfo(): void {
   for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.card-info')) {
     const f = el.dataset.path!;
     const l = loaded.get(f);
-    el.textContent = l
-      ? t().meshInfo(l.info.verts, l.info.tris) + (l.info.counts ? `\nlabels ${l.info.counts}` : '') + lobj2JawNote(f, l)
-      : failed.has(f)
-        ? t().loadFailed(failed.get(f)!)
-        : t().loading;
+    if (!l) {
+      el.textContent = failed.has(f) ? t().loadFailed(failed.get(f)!) : t().loading;
+      continue;
+    }
+    el.textContent = t().meshInfo(l.info.verts, l.info.tris) + lobj2JawNote(f, l);
+    if (l.info.counts) {
+      // labels 清單很長：預設收合，摘要只顯示有幾種 label（展開狀態在重繪時保留）
+      const det = document.createElement('details');
+      det.className = 'card-labels';
+      det.open = labelsOpen.has(f);
+      det.addEventListener('toggle', () => {
+        if (det.open) labelsOpen.add(f);
+        else labelsOpen.delete(f);
+      });
+      const sum = document.createElement('summary');
+      sum.textContent = t().labelKinds(l.info.labelKinds);
+      const body = document.createElement('div');
+      body.textContent = l.info.counts;
+      det.append(sum, body);
+      el.appendChild(det);
+    }
   }
 }
+/** 哪些檔案的卡片 labels 是展開的（預設全部收合）。 */
+const labelsOpen = new Set<string>();
 
 /** 讓畫面上的模型與 `selected` 一致：移除取消選取的、同時載入新選取的。 */
 async function syncSelection(): Promise<void> {

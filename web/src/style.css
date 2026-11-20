@@ -520,6 +520,16 @@ body {
   margin-bottom: 2px;
 }
 
+.card-labels summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-labels > div {
+  white-space: normal;
+  word-break: break-all;
+}
+
 .card select.card-jaw,
 .card select.curv-mode {
   flex: 1;

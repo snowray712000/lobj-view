@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.10.5
+- 新功能: 右側物件卡片的 labels 清單預設收合，只顯示「N 種label」（English: `N labels`、Tiếng Việt: `N nhãn`），點開才看到各 label 的頂點數；展開狀態在重繪 / 切換語言時保留
+- 工程師筆記: `renderInfo` 用 `<details class="card-labels">`，展開的檔案記在 `labelsOpen`；`info.labelKinds` 為不同 label 數（含 -1）；字串 `t().labelKinds(n)` #ui #labels
+
 ### 1.10.4
 - 新功能: 介面新增越南文（Tiếng Việt）：`lang` 選單多一個選項，與中文 / English 一樣即時切換、選擇會記住
 - 已知限制: 同 1.10.3，版本紀錄與後端訊息仍為中文；越南文為 AI 翻譯，牙科術語（hàm trên / hàm dưới、nhãn、độ cong 等）尚待母語者校對

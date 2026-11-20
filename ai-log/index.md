@@ -60,3 +60,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: i18n, lang, lang-btn, lang-menu, t(), Dict, applyStatic, onLangChange, setLang, data-i18n, localStorage lobj-view-lang, English, Vietnamese, 1.10.3
 - [2026/s4/261120g_i18n_vietnamese_v1104.md](2026/s4/261120g_i18n_vietnamese_v1104.md) — 1.10.4: Vietnamese (`vi`, Tiếng Việt) dictionary added to `i18n.ts`; lang menu now 中文 / English / Tiếng Việt.
   Keywords: i18n, vi, Vietnamese, Tiếng Việt, Dict, LANGS, DICTS, hàm trên, hàm dưới, 1.10.4
+- [2026/s4/261120h_collapsible_labels_v1105.md](2026/s4/261120h_collapsible_labels_v1105.md) — 1.10.5: object-card label list is a collapsed `<details>` showing "N 種label" (en/vi translated); open state kept across re-render.
+  Keywords: details, summary, card-labels, labelsOpen, labelKinds, renderInfo, labelCounts, collapse, i18n, 1.10.5
