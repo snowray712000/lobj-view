@@ -52,3 +52,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: convert, lobj2, lobj-convert, FileTimes, set_times, set_created, dialog, delete old, 1.8.5
 - [2026/s4/261120c_jaw_regex_v186.md](2026/s4/261120c_jaw_regex_v186.md) — 1.8.6: jaw decided by a `;`-separated case-insensitive regex list (match = upper, else lower) replacing the global jaw dropdown; `up`/`lo` badge before each `.lobj` in the file list.
   Keywords: jaw, regex, jaw-re, regexJaw, updateJawBadges, parseJawRegexes, badge, up, lo, 1.8.6
+- [2026/s4/261120d_jaw_all_formats_v187.md](2026/s4/261120d_jaw_all_formats_v187.md) — 1.8.7: jaw regex verdict also for .stl/.ply/.obj; badge writes both `up lo`, verdict green, filename-contradiction red.
+  Keywords: jaw, badge, systemGreen, systemRed, jawConflict, isJawFile, stl, ply, obj, 1.8.7

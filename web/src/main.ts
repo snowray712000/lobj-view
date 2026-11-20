@@ -167,6 +167,13 @@ const getProps = (f: string): ObjProps => {
 // 各檔案自己指定的上 / 下顎（只對舊 .lobj 有意義）。沒設 = 依左側 regex 判定（符合任一個 = upper，否則 lower）。
 const jawOf = new Map<string, 'upper' | 'lower'>();
 const isLegacyLobj = (f: string) => f.toLowerCase().endsWith('.lobj');
+/** 需要判定上 / 下顎的檔案：舊 .lobj 與沒有 label 的 .stl / .ply / .obj（之後轉 .lobj2 要用）；.lobj2 本身已是 FDI，不判。 */
+const isJawFile = (f: string) => /\.(lobj|stl|ply|obj)$/i.test(f);
+/** 異常：判定結果與檔名字面矛盾（判成 lower 但檔名有 upper，或判成 upper 但檔名有 lower）。 */
+const jawConflict = (f: string, j: Jaw): boolean => {
+  const n = f.slice(f.lastIndexOf('/') + 1).toLowerCase();
+  return j === 'upper' ? n.includes('lower') : n.includes('upper');
+};
 type Jaw = 'upper' | 'lower';
 let jawRegexes: RegExp[] = [];
 /** 解析左側輸入：以 `;` 分隔（檔名不會有分號）、不分大小寫；空段略過，語法錯誤的段落略過並讓輸入框變紅。 */
@@ -194,8 +201,20 @@ function updateJawBadges(): void {
     const f = li.dataset.path!;
     const b = li.querySelector<HTMLElement>('.jaw-badge');
     if (!b) continue;
-    b.textContent = isLegacyLobj(f) ? (effectiveJaw(f) === 'upper' ? 'up' : 'lo') : '';
-    b.title = isLegacyLobj(f) ? (jawOf.has(f) ? '個別指定' : '依 regex 判定') : '';
+    if (!isJawFile(f)) {
+      b.replaceChildren();
+      b.title = '';
+      continue;
+    }
+    const j = effectiveJaw(f);
+    const bad = jawConflict(f, j);
+    b.replaceChildren(...(['upper', 'lower'] as const).map((k) => {
+      const s = document.createElement('span');
+      s.textContent = k === 'upper' ? 'up' : 'lo';
+      s.className = k === j ? (bad ? 'bad' : 'on') : '';
+      return s;
+    }));
+    b.title = (jawOf.has(f) ? '個別指定' : '依 regex 判定') + (bad ? '；異常：檔名文字與判定結果矛盾' : '');
   }
 }
 
@@ -359,15 +378,15 @@ function buildCard(f: string): HTMLElement {
   info.dataset.path = f;
   card.appendChild(info);
 
-  // 舊 .lobj 的 label 是 arch_index，要知道上 / 下顎才能換成 FDI；檔名沒規律時在這裡各檔自己指定
-  if (isLegacyLobj(f)) {
+  // 要知道上 / 下顎：舊 .lobj 的 label 是 arch_index 需要它才能換成 FDI，.stl / .ply / .obj 則是之後轉 .lobj2 要用；檔名沒規律時在這裡各檔自己指定
+  if (isJawFile(f)) {
     const jawRow = document.createElement('label');
     jawRow.className = 'row';
     const jawName = document.createElement('span');
     jawName.textContent = 'jaw';
     const jawSel = document.createElement('select');
     jawSel.className = 'card-jaw';
-    jawSel.title = '這個檔案是上顎或下顎；「預設」= 沿用左側 jaw 選單，再退回檔名（upper / lower）判斷';
+    jawSel.title = '這個檔案是上顎或下顎；「預設」= 依左側 regex 判定';
     for (const [v, t] of [['', '預設'], ['upper', 'upper（上）'], ['lower', 'lower（下）']] as const) {
       const o = document.createElement('option');
       o.value = v;
@@ -378,13 +397,14 @@ function buildCard(f: string): HTMLElement {
     jawSel.addEventListener('change', () => {
       if (jawSel.value) jawOf.set(f, jawSel.value as 'upper' | 'lower');
       else jawOf.delete(f);
-      reloadFiles([f]); // 只重載這一個檔案，其他不動
+      if (isLegacyLobj(f)) reloadFiles([f]); // 只有舊 .lobj 的解讀受 jaw 影響；只重載這一個檔案
       renderPanel();
       updateJawBadges();
     });
     jawRow.append(jawName, jawSel);
     const known = effectiveJaw(f);
-    {
+    if (isLegacyLobj(f)) {
+      // 轉換目前只做舊 .lobj；.stl / .ply / .obj 之後再處理
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'card-convert';

@@ -514,8 +514,22 @@ body {
 
 #files .jaw-badge {
   display: inline-block;
-  width: 1.8em;
+  width: 3.4em;
   font-size: 10px;
   font-family: monospace;
-  color: var(--secondaryLabel);
+  color: var(--tertiaryLabel);
+}
+
+#files .jaw-badge span {
+  margin-right: 0.4em;
+}
+
+#files .jaw-badge .on {
+  color: var(--systemGreen);
+  font-weight: bold;
+}
+
+#files .jaw-badge .bad {
+  color: var(--systemRed);
+  font-weight: bold;
 }
