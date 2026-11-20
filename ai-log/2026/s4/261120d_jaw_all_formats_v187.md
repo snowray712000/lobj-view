@@ -19,5 +19,8 @@ Apply the jaw regex verdict also to `.stl` / `.ply` / `.obj` (so they can later 
 ## Follow-up (1.8.8)
 User asked for a single word instead of both: only `up` or `lo` in green, and abnormal (my filename-contradiction definition accepted) shown as red `er`. Tooltip carries the real verdict. Version bumped to 1.8.8; only `updateJawBadges` / badge width changed.
 
+## Follow-up (1.8.11)
+After 1.8.10 (stl/ply/obj → `.lobj2` is extension-only, labels all -1), user agreed an all-(-1) `.lobj2` cannot tell its jaw: when reading `.lobj2` and the jaw cannot be determined from labels, fall back to filename. Implemented in the viewer: `jawFromLabels` (upper quadrants 1,2,5,6 / lower 3,4,7,8), source shown in card (`jaw：…`) and in the list badge once loaded; the filename fallback is the same regex verdict (card override also honoured). Tested in the in-app browser with a real lower `.lobj2`, an upper-labelled file renamed with `lower` (→ red `er`), and an stl-converted all -1 `.lobj2` (→ `lo`, via regex).
+
 ## Open items
 Definition of "abnormal"; converting stl/ply/obj to `.lobj2`.
