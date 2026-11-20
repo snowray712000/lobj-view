@@ -514,7 +514,7 @@ body {
 
 #files .jaw-badge {
   display: inline-block;
-  width: 3.4em;
+  width: 1.8em;
   font-size: 10px;
   font-family: monospace;
   color: var(--tertiaryLabel);

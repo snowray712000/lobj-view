@@ -16,5 +16,8 @@ Apply the jaw regex verdict also to `.stl` / `.ply` / `.obj` (so they can later 
 ## Verification
 `npm run build` passes. In the in-app browser with a temp folder: stl/obj/ply/lobj rows show `up lo` with correct green word, `lower_u_x.lobj` shows red `up`, `.lobj2` blank.
 
+## Follow-up (1.8.8)
+User asked for a single word instead of both: only `up` or `lo` in green, and abnormal (my filename-contradiction definition accepted) shown as red `er`. Tooltip carries the real verdict. Version bumped to 1.8.8; only `updateJawBadges` / badge width changed.
+
 ## Open items
 Definition of "abnormal"; converting stl/ply/obj to `.lobj2`.

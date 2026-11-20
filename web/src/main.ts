@@ -208,13 +208,12 @@ function updateJawBadges(): void {
     }
     const j = effectiveJaw(f);
     const bad = jawConflict(f, j);
-    b.replaceChildren(...(['upper', 'lower'] as const).map((k) => {
-      const s = document.createElement('span');
-      s.textContent = k === 'upper' ? 'up' : 'lo';
-      s.className = k === j ? (bad ? 'bad' : 'on') : '';
-      return s;
-    }));
-    b.title = (jawOf.has(f) ? '個別指定' : '依 regex 判定') + (bad ? '；異常：檔名文字與判定結果矛盾' : '');
+    // 只顯示一個：up / lo（綠）；判定與檔名字面矛盾時顯示 er（紅）
+    const s = document.createElement('span');
+    s.textContent = bad ? 'er' : j === 'upper' ? 'up' : 'lo';
+    s.className = bad ? 'bad' : 'on';
+    b.replaceChildren(s);
+    b.title = `${j}（${jawOf.has(f) ? '個別指定' : '依 regex 判定'}）` + (bad ? '；異常：檔名文字與判定結果矛盾' : '');
   }
 }
 
