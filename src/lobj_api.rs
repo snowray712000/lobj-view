@@ -397,7 +397,19 @@ fn copy_times(from: &std::fs::Metadata, to: &Path) -> std::io::Result<()> {
     std::fs::OpenOptions::new().write(true).open(to)?.set_times(t)
 }
 
-/// 舊 `.lobj` → 同資料夾同主檔名的 `.lobj2`。body：`{ "path": 相對 --dir 的路徑, "jaw": "upper"|"lower"|null, "delete_old": bool }`。
+/// 沒有 label 的檔案轉 `.lobj2` 時的新主檔名：檔名沒有 upper / lower 就在前面加 `upper_` / `lower_`；
+/// 已含與判定相同的字就維持；含相反的字（或兩個都含）會讓 `Jaw::guess_from_path` 讀錯，拒絕。
+fn jaw_stem(stem: &str, jaw: Jaw) -> Result<String, String> {
+    let l = stem.to_lowercase();
+    let (word, other) = if jaw == Jaw::Upper { ("upper", "lower") } else { ("lower", "upper") };
+    match (l.contains(word), l.contains(other)) {
+        (false, false) => Ok(format!("{word}_{stem}")),
+        (true, false) => Ok(stem.to_string()),
+        _ => Err(format!("檔名含 {other}（或同時含 upper 與 lower），與判定 {word} 矛盾，轉出的 .lobj2 會被讀錯；請先改檔名")),
+    }
+}
+
+/// 舊 `.lobj`（或沒有 label 的 `.stl` / `.ply` / `.obj`，檔名依 `jaw_stem` 補上下顎字樣）→ 同資料夾的 `.lobj2`。body：`{ "path": 相對 --dir 的路徑, "jaw": "upper"|"lower"|null, "delete_old": bool }`。
 /// 新檔已存在就拒絕（不覆蓋）；寫完會重新讀回比對頂點 / 三角形數，確認無誤才依 `delete_old` 刪舊檔。
 async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, CONVERT_REMOTE_MSG) {
@@ -420,10 +432,19 @@ async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
         if r.base != root {
             return Err(bad(StatusCode::BAD_REQUEST, "zip 內的檔案不能轉檔（請先解壓縮）"));
         }
-        if !r.real.is_file() || r.real.extension().map(|e| e.to_ascii_lowercase()) != Some("lobj".into()) {
-            return Err(bad(StatusCode::BAD_REQUEST, "只能轉換 .lobj 檔案"));
+        let ext = r.real.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if !r.real.is_file() || !matches!(ext.as_str(), "lobj" | "stl" | "ply" | "obj") {
+            return Err(bad(StatusCode::BAD_REQUEST, "只能轉換 .lobj / .stl / .ply / .obj 檔案"));
         }
-        let new = r.real.with_extension("lobj2");
+        // .lobj 的 label 含牙齒，轉出的 .lobj2 同名即可；.stl / .ply / .obj 沒有 label，
+        // .lobj2 只能靠檔名記上下顎（含 upper / lower），所以檔名要帶判定的字
+        let new = if ext == "lobj" {
+            r.real.with_extension("lobj2")
+        } else {
+            let jaw = jaw.ok_or_else(|| bad(StatusCode::BAD_REQUEST, "需要指定 jaw"))?;
+            let stem = r.real.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            r.real.with_file_name(format!("{}.lobj2", jaw_stem(&stem, jaw).map_err(|m| (StatusCode::BAD_REQUEST, m))?))
+        };
         if new.exists() {
             return Err(bad(StatusCode::CONFLICT, "同名的 .lobj2 已存在，未轉檔"));
         }

@@ -16,5 +16,8 @@ On the right-hand object card, once a legacy `.lobj` has a jaw specified, offer 
 ## Verification
 `cargo build` and `npm run build` pass. End-to-end API test against a real `.lobj` (case-test copy, dates set to 2020-03-04): keep-old and delete-old both succeed, creation/modified times preserved on the new file; existing `.lobj2` → 409; missing `X-Lobj-Requested` → 403. Browser dialog NOT clicked through.
 
+## Follow-up (1.8.9)
+Convert extended to `.stl` / `.ply` / `.obj`. Key design point: an unlabeled `.lobj2` cannot store the jaw (only FDI labels carry it; `Jaw::guess_from_path` reads the filename), so the new filename must contain `upper`/`lower`: `jaw_stem` prefixes `upper_`/`lower_` when absent, keeps the name when it already has the verdict word, refuses on the opposite/both words (the red `er` case). `.lobj` keeps the same-name behaviour. API tested on stl/obj/ply: keep/delete, rename rule, refusal, 409 on existing, 400 without jaw, times preserved. Browser dialog not clicked through.
+
 ## Open items
 Batch convert of several files; non-Windows creation time not preserved.

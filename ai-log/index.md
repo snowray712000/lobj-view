@@ -49,7 +49,7 @@ One entry per session log. Paths are relative to this file.
 - [2026/s4/261120a_per_file_jaw_v184.md](2026/s4/261120a_per_file_jaw_v184.md) — 1.8.4: per-file jaw select on object cards for legacy `.lobj` (card > global select > filename guess), so one upper and one lower file can be loaded together.
   Keywords: jaw, per-file, jawOf, effectiveJaw, reloadFiles, arch_index, upper, lower, 1.8.4
 - [2026/s4/261120b_convert_lobj2_v185.md](2026/s4/261120b_convert_lobj2_v185.md) — 1.8.5: "轉 lobj2" card button + dialog (delete old by default / keep) converting a legacy `.lobj` with known jaw to `.lobj2`, preserving file times, via `POST /api/lobj-convert`.
-  Keywords: convert, lobj2, lobj-convert, FileTimes, set_times, set_created, dialog, delete old, 1.8.5
+  Keywords: convert, lobj2, lobj-convert, FileTimes, set_times, set_created, dialog, delete old, 1.8.5, 1.8.9, jaw_stem, stl, ply, obj, upper_ prefix
 - [2026/s4/261120c_jaw_regex_v186.md](2026/s4/261120c_jaw_regex_v186.md) — 1.8.6: jaw decided by a `;`-separated case-insensitive regex list (match = upper, else lower) replacing the global jaw dropdown; `up`/`lo` badge before each `.lobj` in the file list.
   Keywords: jaw, regex, jaw-re, regexJaw, updateJawBadges, parseJawRegexes, badge, up, lo, 1.8.6
 - [2026/s4/261120d_jaw_all_formats_v187.md](2026/s4/261120d_jaw_all_formats_v187.md) — 1.8.7: jaw regex verdict also for .stl/.ply/.obj; badge writes both `up lo`, verdict green, filename-contradiction red.
