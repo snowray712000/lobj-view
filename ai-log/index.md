@@ -46,3 +46,7 @@ One entry per session log. Paths are relative to this file.
   Keywords: orthographic, OrthographicCamera, OrbitControls, zoom, updateOrthoFrustum, setOrthographic, 1.8.2
 - [2026/s4/261119q_single_side_v183.md](2026/s4/261119q_single_side_v183.md) — 1.8.3: "單面" checkbox (default off) switching mesh material between DoubleSide and FrontSide.
   Keywords: single-sided, FrontSide, DoubleSide, backface culling, material.side, winding, 1.8.3
+- [2026/s4/261120a_per_file_jaw_v184.md](2026/s4/261120a_per_file_jaw_v184.md) — 1.8.4: per-file jaw select on object cards for legacy `.lobj` (card > global select > filename guess), so one upper and one lower file can be loaded together.
+  Keywords: jaw, per-file, jawOf, effectiveJaw, reloadFiles, arch_index, upper, lower, 1.8.4
+- [2026/s4/261120b_convert_lobj2_v185.md](2026/s4/261120b_convert_lobj2_v185.md) — 1.8.5: "轉 lobj2" card button + dialog (delete old by default / keep) converting a legacy `.lobj` with known jaw to `.lobj2`, preserving file times, via `POST /api/lobj-convert`.
+  Keywords: convert, lobj2, lobj-convert, FileTimes, set_times, set_created, dialog, delete old, 1.8.5

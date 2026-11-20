@@ -2,6 +2,17 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.8.5
+- 新功能: 右側物件卡片上，已知上 / 下顎（卡片指定、左側預設、或檔名含 upper / lower）的 `.lobj` 出現「轉 lobj2」鈕：跳出視窗確認，預設「轉換後刪除舊檔」，也可選「保留舊檔」；轉出的 `.lobj2`（label 為 FDI）放在同資料夾、同主檔名，建立 / 修改 / 存取時間與舊檔相同，成功後選取自動換成新檔並更新檔案清單
+- 優化: 同名 `.lobj2` 已存在時拒絕（不覆蓋）；寫完會讀回比對頂點、三角形與 label，不一致就刪掉新檔並放棄，確認無誤才刪舊檔
+- 已知限制: zip 內的檔案不能轉；只在伺服器監聽本機位址時可用（會寫入 / 刪除檔案）；建立時間只在 Windows 保留
+- 工程師筆記: 新增 `POST /api/lobj-convert`（`lobj_api.rs` 的 `convert`，沿用 `assoc::guard_with`：本機 + `X-Lobj-Requested`）；用 `lobj::load(jaw)` + `lobj::save`，時間以 `File::set_times`（Windows 加 `FileTimesExt::set_created`）；前端 `convertDialog` 使用原生 `<dialog>` #convert #lobj2 #FileTimes
+
+### 1.8.4
+- 新功能: 舊 `.lobj` 的上 / 下顎改為「每個檔案各自指定」：右側物件卡片（僅 `.lobj`）新增 jaw 選單（預設 / upper / lower），兩個檔名沒規律的檔案可以一個上顎、一個下顎同時載入；改選只會重新載入該檔案
+- 優化: 左側原本的 jaw 選單變成「預設值」，只影響沒有自己指定的舊 `.lobj`；優先順序為 卡片指定 > 左側預設 > 檔名含 upper / lower 判斷
+- 工程師筆記: 後端不用改（`?jaw=` 本來就是每個請求獨立）。前端 `main.ts` 新增 `jawOf: Map<檔案, 'upper'|'lower'>`、`effectiveJaw(f)`、`reloadFiles()`；載入途中 jaw 被改時以 `jawUsed` 比對丟棄過期結果。jaw 設定與 props 一樣取消選取後保留，不記入 localStorage #jaw #per-file
+
 ### 1.8.3
 - 新功能: 左上角狀態列新增「單面」核取方塊，預設關閉（維持原本的雙面繪製）；勾選後網格只繪正面（三角形頂點逆時針的那一面），背面不畫，可從背面看穿模型，也可用來檢查三角形方向是否一致
 - 工程師筆記: 原本材質固定 `THREE.DoubleSide`；改為 `meshSide()` 依 `singleSided` 回傳 `FrontSide` / `DoubleSide`，切換時逐一更新已載入模型的 `material.side` 並設 `needsUpdate`，之後新載入的模型沿用目前設定。wire / normal 線段不受影響。此選項不記入 localStorage #cull #FrontSide

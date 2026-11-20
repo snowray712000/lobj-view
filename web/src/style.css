@@ -427,6 +427,7 @@ body {
   margin-bottom: 2px;
 }
 
+.card select.card-jaw,
 .card select.curv-mode {
   flex: 1;
   min-width: 0;
@@ -455,4 +456,50 @@ body {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--secondaryLabel);
+}
+
+.card .card-convert {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+}
+
+.convert-dlg {
+  background: var(--secondarySystemBackground);
+  color: var(--label);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  padding: 14px 18px;
+  max-width: 420px;
+}
+
+.convert-dlg::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.convert-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.convert-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+}
+
+.convert-msg {
+  min-height: 1.2em;
+  font-size: 12px;
+  color: var(--systemRed);
+  white-space: pre-line;
+}
+
+.convert-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }

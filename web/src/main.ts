@@ -162,6 +162,103 @@ const getProps = (f: string): ObjProps => {
   if (!p) propsOf.set(f, (p = defaultProps()));
   return p;
 };
+// 各檔案自己指定的上 / 下顎（只對舊 .lobj 有意義）。沒設 = 沿用左側全域 jaw 選單，再退回檔名判斷。
+const jawOf = new Map<string, 'upper' | 'lower'>();
+const globalJaw = () => (jawEl.value || undefined) as 'upper' | 'lower' | undefined;
+const effectiveJaw = (f: string) => jawOf.get(f) ?? globalJaw();
+const isLegacyLobj = (f: string) => f.toLowerCase().endsWith('.lobj');
+/** 檔名含 upper 或 lower（只含其一）時的判斷，與後端 `Jaw::guess_from_path` 一致。 */
+function guessJawFromName(f: string): 'upper' | 'lower' | undefined {
+  const n = f.slice(f.lastIndexOf('/') + 1).toLowerCase();
+  const u = n.includes('upper'), l = n.includes('lower');
+  return u && !l ? 'upper' : l && !u ? 'lower' : undefined;
+}
+
+/** 轉 .lobj2 的確認視窗：預設刪舊檔；成功後把選取換成新檔並重新整理檔案清單。 */
+function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
+  const name = f.slice(f.lastIndexOf('/') + 1);
+  const dlg = document.createElement('dialog');
+  dlg.className = 'convert-dlg';
+  const h = document.createElement('div');
+  h.className = 'convert-title';
+  h.textContent = `轉成 .lobj2：${name}`;
+  const p = document.createElement('div');
+  p.className = 'hint';
+  p.textContent = `以 ${jaw} 將 label 換成 FDI，存成同資料夾同名的 .lobj2；新檔的建立 / 修改 / 存取時間與舊檔相同。`;
+  const opts = document.createElement('div');
+  opts.className = 'convert-opts';
+  const radio = (value: string, text: string, checked: boolean) => {
+    const l = document.createElement('label');
+    const r = document.createElement('input');
+    r.type = 'radio';
+    r.name = 'del';
+    r.value = value;
+    r.checked = checked;
+    l.append(r, ' ', text);
+    return l;
+  };
+  opts.append(radio('1', '轉換後刪除舊檔（預設）', true), radio('0', '保留舊檔', false));
+  const msg = document.createElement('div');
+  msg.className = 'convert-msg';
+  const btns = document.createElement('div');
+  btns.className = 'convert-btns';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = '取消';
+  const ok = document.createElement('button');
+  ok.type = 'button';
+  ok.textContent = '轉換';
+  btns.append(cancel, ok);
+  dlg.append(h, p, opts, msg, btns);
+  document.body.appendChild(dlg);
+  const close = () => {
+    dlg.close();
+    dlg.remove();
+  };
+  cancel.addEventListener('click', close);
+  dlg.addEventListener('cancel', () => dlg.remove());
+  ok.addEventListener('click', async () => {
+    const del = (dlg.querySelector('input[name=del]:checked') as HTMLInputElement).value === '1';
+    ok.disabled = cancel.disabled = true;
+    msg.textContent = '轉換中…';
+    try {
+      const r = await fetch('/api/lobj-convert', {
+        method: 'POST',
+        headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: f, jaw, delete_old: del }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const res = (await r.json()) as { new_path: string; deleted: boolean };
+      if (res.deleted) {
+        selected.delete(f);
+        jawOf.delete(f);
+        propsOf.delete(f);
+      }
+      selected.add(res.new_path);
+      lastClicked = res.new_path;
+      close();
+      await browse(curDir); // 重新整理清單（舊檔消失、新檔出現），並維持選取
+      await syncSelection();
+      infoEl.textContent = `已轉成 ${res.new_path}${res.deleted ? '，舊檔已刪除' : ''}`;
+    } catch (e) {
+      msg.textContent = `失敗：${e instanceof Error ? e.message : e}`;
+      ok.disabled = cancel.disabled = false;
+    }
+  });
+  dlg.showModal();
+}
+
+/** 丟掉已載入的檔案，讓下一次 syncSelection 重新載入（jaw 變了才需要）。 */
+function reloadFiles(files: Iterable<string>): void {
+  for (const f of files) {
+    const l = loaded.get(f);
+    if (!l) continue;
+    disposeMesh(l.mesh);
+    loaded.delete(f);
+    failed.delete(f);
+  }
+  if (selected.size) void syncSelection();
+}
 // 已做過自動配色的檔案：只配一次，之後（含取消選取再選回來）尊重使用者的選擇
 const autoColored = new Set<string>();
 const failed = new Map<string, string>();
@@ -236,6 +333,43 @@ function buildCard(f: string): HTMLElement {
   info.className = 'card-info';
   info.dataset.path = f;
   card.appendChild(info);
+
+  // 舊 .lobj 的 label 是 arch_index，要知道上 / 下顎才能換成 FDI；檔名沒規律時在這裡各檔自己指定
+  if (isLegacyLobj(f)) {
+    const jawRow = document.createElement('label');
+    jawRow.className = 'row';
+    const jawName = document.createElement('span');
+    jawName.textContent = 'jaw';
+    const jawSel = document.createElement('select');
+    jawSel.className = 'card-jaw';
+    jawSel.title = '這個檔案是上顎或下顎；「預設」= 沿用左側 jaw 選單，再退回檔名（upper / lower）判斷';
+    for (const [v, t] of [['', '預設'], ['upper', 'upper（上）'], ['lower', 'lower（下）']] as const) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = t;
+      jawSel.appendChild(o);
+    }
+    jawSel.value = jawOf.get(f) ?? '';
+    jawSel.addEventListener('change', () => {
+      if (jawSel.value) jawOf.set(f, jawSel.value as 'upper' | 'lower');
+      else jawOf.delete(f);
+      reloadFiles([f]); // 只重載這一個檔案，其他不動
+      renderPanel();
+    });
+    jawRow.append(jawName, jawSel);
+    // 已知上 / 下顎（卡片或左側指定，或檔名含 upper / lower）才能轉成 .lobj2
+    const known = effectiveJaw(f) ?? guessJawFromName(f);
+    if (known) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'card-convert';
+      btn.textContent = '轉 lobj2';
+      btn.title = `依 ${known} 把這個檔案轉存成 .lobj2（label 改為 FDI），新檔沿用舊檔的日期`;
+      btn.addEventListener('click', () => void convertDialog(f, known));
+      jawRow.appendChild(btn);
+    }
+    card.appendChild(jawRow);
+  }
 
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const row = document.createElement('label');
@@ -578,13 +712,13 @@ async function syncSelection(): Promise<void> {
     fitCamera();
     return;
   }
-  const jaw = (jawEl.value || undefined) as 'upper' | 'lower' | undefined;
   await Promise.all(
     todo.map(async (f) => {
       try {
-        const built = buildMesh(await withBusy(f, (signal) => fetchLobj(f, jaw, signal)));
-        // 期間選取已變（或已被取消）就丟棄，避免殘留
-        if (!selected.has(f) || loaded.has(f)) {
+        const jawUsed = effectiveJaw(f);
+        const built = buildMesh(await withBusy(f, (signal) => fetchLobj(f, jawUsed, signal)));
+        // 期間選取已變（或已被取消）、或 jaw 已改（由改 jaw 時啟動的 sync 重載）就丟棄，避免殘留
+        if (!selected.has(f) || loaded.has(f) || effectiveJaw(f) !== jawUsed) {
           built.mesh.geometry.dispose();
           (built.mesh.material as THREE.Material).dispose();
           return;
@@ -757,11 +891,9 @@ pathEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void browse(pathEl.value);
 });
 jawEl.addEventListener('change', () => {
-  // jaw 會影響舊 .lobj 的解讀，需全部重新載入
-  for (const l of loaded.values()) disposeMesh(l.mesh);
-  loaded.clear();
-  failed.clear();
-  if (selected.size) void syncSelection();
+  // 全域 jaw 只是預設值：已各自指定的檔案不受影響，其餘的舊 .lobj 才需要重新載入
+  reloadFiles([...loaded.keys()].filter((f) => isLegacyLobj(f) && !jawOf.has(f)));
+  renderPanel(); // 「轉 lobj2」鈕是否出現取決於有沒有指定 jaw
 });
 
 /** 後端通知「有人用 `lobj-view <檔案>` 開檔」：根資料夾已換，舊的選取與模型都作廢，改顯示新的。 */

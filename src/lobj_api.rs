@@ -9,6 +9,9 @@
 //!     - labels 一律是 **FDI**（舊 `.lobj` 會在後端先換算，所以前端不需要知道 arch_index）；
 //!     - 檔案沒有 colors 時，由後端依 labels 補上（`Palette::Unique`），調色盤只在 Rust 維護一份。
 //!
+//! - `POST /api/lobj-convert`（只限本機、需 `X-Lobj-Requested`）：把舊 `.lobj` 依指定的 jaw 轉存成同資料夾的 `.lobj2`，
+//!   新檔沿用舊檔的建立 / 修改 / 存取時間，可選擇刪除舊檔（見 `convert`）。
+//!
 //! 所有路徑都會 canonicalize 後確認仍在 `--dir` 之內（含 `..`、符號連結），超出一律拒絕。
 //!
 //! `.zip` 檔視為資料夾（`dirs` 內包含它，並在 `zips` 標出）：第一次進入時由 `zipfs` 解壓到快取，
@@ -24,13 +27,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::{
     Router,
+    Json,
     extract::{ConnectInfo, Path as UrlPath, Query, State},
-    http::{HeaderName, StatusCode, header},
+    http::{HeaderMap, HeaderName, StatusCode, header},
     response::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::get,
+    routing::{get, post},
 };
 use lobj::colors::{self, Palette};
 use lobj::{Jaw, LobjError};
@@ -44,6 +48,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
     Router::new()
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
+        .route("/api/lobj-convert", post(convert))
         .route("/api/events", get(events))
         .route("/api/stats", get(stats))
         .with_state(shared)
@@ -370,6 +375,86 @@ async fn fetch(
             (StatusCode::NOT_FOUND, "找不到檔案").into_response()
         }
         Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
+    }
+}
+
+const CONVERT_REMOTE_MSG: &str = "轉檔會寫入並可能刪除伺服器上的檔案，只在伺服器監聽本機位址時開放";
+
+/// 把新檔的時間設成與舊檔相同（Windows 連建立時間一起）。
+fn copy_times(from: &std::fs::Metadata, to: &Path) -> std::io::Result<()> {
+    let mut t = std::fs::FileTimes::new();
+    if let Ok(a) = from.accessed() {
+        t = t.set_accessed(a);
+    }
+    if let Ok(m) = from.modified() {
+        t = t.set_modified(m);
+    }
+    #[cfg(windows)]
+    if let Ok(c) = from.created() {
+        use std::os::windows::fs::FileTimesExt;
+        t = t.set_created(c);
+    }
+    std::fs::OpenOptions::new().write(true).open(to)?.set_times(t)
+}
+
+/// 舊 `.lobj` → 同資料夾同主檔名的 `.lobj2`。body：`{ "path": 相對 --dir 的路徑, "jaw": "upper"|"lower"|null, "delete_old": bool }`。
+/// 新檔已存在就拒絕（不覆蓋）；寫完會重新讀回比對頂點 / 三角形數，確認無誤才依 `delete_old` 刪舊檔。
+async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, CONVERT_REMOTE_MSG) {
+        return e.into_response();
+    }
+    let Some(path) = body.get("path").and_then(|v| v.as_str()).map(str::to_owned) else {
+        return (StatusCode::BAD_REQUEST, "缺少 path").into_response();
+    };
+    let jaw = match body.get("jaw").and_then(|v| v.as_str()) {
+        Some("upper") => Some(Jaw::Upper),
+        Some("lower") => Some(Jaw::Lower),
+        Some(_) => return (StatusCode::BAD_REQUEST, "jaw 只能是 upper 或 lower").into_response(),
+        None => None,
+    };
+    let delete_old = body.get("delete_old").and_then(|v| v.as_bool()).unwrap_or(false);
+    let root = shared.root();
+    let job = move || -> Result<String, (StatusCode, String)> {
+        let bad = |c: StatusCode, m: &str| (c, m.to_string());
+        let r = resolve(&root, &path, &AtomicBool::new(false)).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.base != root {
+            return Err(bad(StatusCode::BAD_REQUEST, "zip 內的檔案不能轉檔（請先解壓縮）"));
+        }
+        if !r.real.is_file() || r.real.extension().map(|e| e.to_ascii_lowercase()) != Some("lobj".into()) {
+            return Err(bad(StatusCode::BAD_REQUEST, "只能轉換 .lobj 檔案"));
+        }
+        let new = r.real.with_extension("lobj2");
+        if new.exists() {
+            return Err(bad(StatusCode::CONFLICT, "同名的 .lobj2 已存在，未轉檔"));
+        }
+        let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+        let le = |e: LobjError| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string());
+        let meta = std::fs::metadata(&r.real).map_err(io)?; // 先取時間：讀檔會更動存取時間
+        let obj = lobj::load(&r.real, jaw).map_err(le)?;
+        let (nv, nt) = (obj.vertices.len(), obj.triangles.len());
+        let cleanup = |m: (StatusCode, String)| {
+            std::fs::remove_file(&new).ok();
+            m
+        };
+        lobj::save(&new, &obj).map_err(|e| cleanup(le(e)))?;
+        copy_times(&meta, &new).map_err(|e| cleanup(io(e)))?;
+        let back = lobj::load(&new, None).map_err(|e| cleanup(le(e)))?;
+        if back.vertices.len() != nv || back.triangles.len() != nt || back.labels != obj.labels {
+            return Err(cleanup((StatusCode::INTERNAL_SERVER_ERROR, "轉出的檔案與原檔不一致，已放棄".into())));
+        }
+        if delete_old {
+            std::fs::remove_file(&r.real).map_err(io)?;
+        }
+        Ok(rel_string(&root, &new))
+    };
+    match tokio::task::spawn_blocking(job).await {
+        Ok(Ok(new_path)) => (
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"new_path\":{},\"deleted\":{delete_old}}}", json_string(&new_path)),
+        )
+            .into_response(),
+        Ok(Err((c, m))) => (c, m).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
 
