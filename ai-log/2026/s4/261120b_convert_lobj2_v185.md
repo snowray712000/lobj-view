@@ -19,5 +19,8 @@ On the right-hand object card, once a legacy `.lobj` has a jaw specified, offer 
 ## Follow-up (1.8.9)
 Convert extended to `.stl` / `.ply` / `.obj`. Key design point: an unlabeled `.lobj2` cannot store the jaw (only FDI labels carry it; `Jaw::guess_from_path` reads the filename), so the new filename must contain `upper`/`lower`: `jaw_stem` prefixes `upper_`/`lower_` when absent, keeps the name when it already has the verdict word, refuses on the opposite/both words (the red `er` case). `.lobj` keeps the same-name behaviour. API tested on stl/obj/ply: keep/delete, rename rule, refusal, 409 on existing, 400 without jaw, times preserved. Browser dialog not clicked through.
 
+## Follow-up (1.8.10)
+User rejected the automatic rename of 1.8.9: only the extension changes. Their reasoning: once upper/lower is known, a `.lobj2` carries it via FDI labels. Caveat flagged to the user: stl/ply/obj have no labels, so the converted `.lobj2` has all labels -1 and the jaw is not stored anywhere in the file. `jaw_stem` and the "jaw required" check removed.
+
 ## Open items
 Batch convert of several files; non-Windows creation time not preserved.

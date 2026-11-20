@@ -229,7 +229,7 @@ function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
   p.className = 'hint';
   p.textContent = isLegacyLobj(f)
     ? `以 ${jaw} 將 label 換成 FDI，存成同資料夾同名的 .lobj2；新檔的建立 / 修改 / 存取時間與舊檔相同。`
-    : `存成同資料夾的 .lobj2（沒有 label，上下顎只能記在檔名：檔名沒有 ${jaw} 時會在前面加 ${jaw}_）；新檔的建立 / 修改 / 存取時間與舊檔相同。`;
+    : `只改副檔名存成同資料夾同名的 .lobj2（沒有 label，labels 全是 -1）；新檔的建立 / 修改 / 存取時間與舊檔相同。`;
   const opts = document.createElement('div');
   opts.className = 'convert-opts';
   const radio = (value: string, text: string, checked: boolean) => {
@@ -409,7 +409,7 @@ function buildCard(f: string): HTMLElement {
       btn.type = 'button';
       btn.className = 'card-convert';
       btn.textContent = '轉 lobj2';
-      btn.title = `依 ${known} 把這個檔案轉存成 .lobj2${isLegacyLobj(f) ? '（label 改為 FDI）' : '（沒有 label，上下顎記在檔名）'}，新檔沿用舊檔的日期`;
+      btn.title = `依 ${known} 把這個檔案轉存成 .lobj2${isLegacyLobj(f) ? '（label 改為 FDI）' : '（沒有 label，只改副檔名）'}，新檔沿用舊檔的日期`;
       btn.addEventListener('click', () => void convertDialog(f, known));
       jawRow.appendChild(btn);
     }
