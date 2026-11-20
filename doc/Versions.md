@@ -2,6 +2,11 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.10.2
+- 新功能: 左側（狀態列、選擇檔案）寬度可拖曳調整：拖右邊緣改變寬度，雙擊還原預設，寬度會記住；寬度不足時，狀態列選項、路徑與 regex 輸入框自動換到下一行，檔案清單可橫向捲動
+- 優化: 預設寬度縮短（約 34em）
+- 工程師筆記: `#hud` 寬度由 CSS 變數 `--hud-w` 控制，`#hud-resize` 為拖曳把手（pointer events），存 `localStorage['lobj-view.hud-w']`；`#path` / `#jaw-re` 改為 flex 換行 #ui #resize
+
 ### 1.10.1
 - 新功能: 伺服器只監聽本機位址（預設 localhost）時，瀏覽 / 開檔 / 轉檔不再限制在 `--dir` 之內，可到整台電腦的任何資料夾（「..」可一路往上；`--dir` 之外以 `D:/…` 這類絕對路徑表示）；`--host 0.0.0.0` 時維持原本只限 `--dir` 之內
 - 工程師筆記: `resolve_ex` / `list_dir_ex` 加 `unrestricted`（= `Shared::local_only()`）；`Resolved.in_zip` 取代 `base != root` 判斷 zip；`virt_of` / `parent_virt`；`/api/lobj` 回應多 `up` 欄位，前端「..」改用它 #localhost #dir

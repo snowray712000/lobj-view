@@ -21,6 +21,28 @@ body {
   flex-direction: column;
   gap: 6px;
   pointer-events: none;
+  /* 寬度可由右緣拖曳調整（--hud-w），內容放不下就自動換行往下排 */
+  width: var(--hud-w, 34em);
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+}
+
+#hud-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 1;
+}
+
+#hud-resize:hover,
+#hud-resize.dragging {
+  background: color-mix(in srgb, var(--link) 40%, transparent);
+  border-radius: 4px;
 }
 
 /* 左側兩塊：半透明，避免擋住後面的模型 */
@@ -35,6 +57,17 @@ body {
 
 #status {
   padding: 4px 10px;
+  overflow-wrap: anywhere;
+}
+
+#status select,
+#status label,
+#status button {
+  max-width: 100%;
+}
+
+#status label {
+  white-space: nowrap;
 }
 
 #status2,
@@ -74,7 +107,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  max-width: 320px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 #busy[hidden] {
@@ -245,17 +279,30 @@ body {
   pointer-events: auto;
 }
 
+#browser-body > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 #path {
-  width: 22em;
+  flex: 1 1 14em;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#jaw-re {
+  flex: 1 1 10em;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 #files {
   list-style: none;
   margin: 4px 0;
   padding: 0;
-  max-width: 28em;
   max-height: 40vh;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 #files li {

@@ -1538,3 +1538,49 @@ themeEl.addEventListener('change', () => {
     /* 忽略 */
   }
 });
+
+// 左側 HUD 寬度：拖曳右緣調整（存在 localStorage），雙擊還原預設；內容會自動換行
+(() => {
+  const hud = document.getElementById('hud')!;
+  const handle = document.getElementById('hud-resize')!;
+  const KEY = 'lobj-view.hud-w';
+  const apply = (w: number | null) => {
+    if (w === null) hud.style.removeProperty('--hud-w');
+    else hud.style.setProperty('--hud-w', `${Math.round(w)}px`);
+  };
+  try {
+    const saved = Number(localStorage.getItem(KEY));
+    if (saved >= 200) apply(saved);
+  } catch {
+    /* 無法使用 localStorage 就用預設 */
+  }
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    const left = hud.getBoundingClientRect().left;
+    const move = (ev: PointerEvent) => apply(Math.min(Math.max(ev.clientX - left, 200), window.innerWidth - 16));
+    const up = () => {
+      handle.classList.remove('dragging');
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      try {
+        localStorage.setItem(KEY, String(Math.round(hud.getBoundingClientRect().width)));
+      } catch {
+        /* 忽略 */
+      }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+  handle.addEventListener('dblclick', () => {
+    apply(null);
+    try {
+      localStorage.removeItem(KEY);
+    } catch {
+      /* 忽略 */
+    }
+  });
+})();
