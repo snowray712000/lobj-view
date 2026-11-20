@@ -503,3 +503,19 @@ body {
   gap: 8px;
   margin-top: 8px;
 }
+
+#jaw-re {
+  width: 12em;
+}
+
+#jaw-re.bad {
+  outline: 1px solid var(--systemRed);
+}
+
+#files .jaw-badge {
+  display: inline-block;
+  width: 1.8em;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--secondaryLabel);
+}

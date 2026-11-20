@@ -140,12 +140,14 @@ applySceneTheme();
 // --- .lobj：後端以 binary stream 送來，前端解析後建立 three.js mesh ---
 const filesEl = document.getElementById('files') as HTMLUListElement;
 const pathEl = document.getElementById('path') as HTMLInputElement;
-const jawEl = document.getElementById('jaw') as HTMLSelectElement;
+const jawReEl = document.getElementById('jaw-re') as HTMLInputElement;
 const infoEl = document.getElementById('info')!;
 
 // 已載入的模型：key 為相對 --dir 的完整路徑。可同時顯示多個檔案。
 interface Loaded {
   mesh: THREE.Mesh;
+  /** 載入時用的上 / 下顎（舊 .lobj 才有）；判定改變時據此決定要不要重載 */
+  jaw?: 'upper' | 'lower';
   info: string;
   /** 檔案原本的頂點顏色，color 屬性設回「不設定」時用來還原 */
   orig: Float32Array;
@@ -162,16 +164,39 @@ const getProps = (f: string): ObjProps => {
   if (!p) propsOf.set(f, (p = defaultProps()));
   return p;
 };
-// 各檔案自己指定的上 / 下顎（只對舊 .lobj 有意義）。沒設 = 沿用左側全域 jaw 選單，再退回檔名判斷。
+// 各檔案自己指定的上 / 下顎（只對舊 .lobj 有意義）。沒設 = 依左側 regex 判定（符合任一個 = upper，否則 lower）。
 const jawOf = new Map<string, 'upper' | 'lower'>();
-const globalJaw = () => (jawEl.value || undefined) as 'upper' | 'lower' | undefined;
-const effectiveJaw = (f: string) => jawOf.get(f) ?? globalJaw();
 const isLegacyLobj = (f: string) => f.toLowerCase().endsWith('.lobj');
-/** 檔名含 upper 或 lower（只含其一）時的判斷，與後端 `Jaw::guess_from_path` 一致。 */
-function guessJawFromName(f: string): 'upper' | 'lower' | undefined {
-  const n = f.slice(f.lastIndexOf('/') + 1).toLowerCase();
-  const u = n.includes('upper'), l = n.includes('lower');
-  return u && !l ? 'upper' : l && !u ? 'lower' : undefined;
+type Jaw = 'upper' | 'lower';
+let jawRegexes: RegExp[] = [];
+/** 解析左側輸入：以 `;` 分隔（檔名不會有分號）、不分大小寫；空段略過，語法錯誤的段落略過並讓輸入框變紅。 */
+function parseJawRegexes(text: string): { res: RegExp[]; bad: string[] } {
+  const res: RegExp[] = [], bad: string[] = [];
+  for (const seg of text.split(';')) {
+    if (!seg) continue;
+    try {
+      res.push(new RegExp(seg, 'i'));
+    } catch {
+      bad.push(seg);
+    }
+  }
+  return { res, bad };
+}
+/** 暫時的判定：檔名（不含資料夾）符合任一個 regex = upper，否則 lower。 */
+const regexJaw = (f: string): Jaw => {
+  const n = f.slice(f.lastIndexOf('/') + 1);
+  return jawRegexes.some((r) => r.test(n)) ? 'upper' : 'lower';
+};
+const effectiveJaw = (f: string): Jaw => jawOf.get(f) ?? regexJaw(f);
+/** 檔案清單每個舊 .lobj 前面的小標記：up / lo；其他格式（label 已是 FDI）留空。 */
+function updateJawBadges(): void {
+  for (const li of filesEl.querySelectorAll<HTMLLIElement>('li[data-path]')) {
+    const f = li.dataset.path!;
+    const b = li.querySelector<HTMLElement>('.jaw-badge');
+    if (!b) continue;
+    b.textContent = isLegacyLobj(f) ? (effectiveJaw(f) === 'upper' ? 'up' : 'lo') : '';
+    b.title = isLegacyLobj(f) ? (jawOf.has(f) ? '個別指定' : '依 regex 判定') : '';
+  }
 }
 
 /** 轉 .lobj2 的確認視窗：預設刪舊檔；成功後把選取換成新檔並重新整理檔案清單。 */
@@ -355,11 +380,11 @@ function buildCard(f: string): HTMLElement {
       else jawOf.delete(f);
       reloadFiles([f]); // 只重載這一個檔案，其他不動
       renderPanel();
+      updateJawBadges();
     });
     jawRow.append(jawName, jawSel);
-    // 已知上 / 下顎（卡片或左側指定，或檔名含 upper / lower）才能轉成 .lobj2
-    const known = effectiveJaw(f) ?? guessJawFromName(f);
-    if (known) {
+    const known = effectiveJaw(f);
+    {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'card-convert';
@@ -715,10 +740,11 @@ async function syncSelection(): Promise<void> {
   await Promise.all(
     todo.map(async (f) => {
       try {
-        const jawUsed = effectiveJaw(f);
+        const jawUsed = isLegacyLobj(f) ? effectiveJaw(f) : undefined;
         const built = buildMesh(await withBusy(f, (signal) => fetchLobj(f, jawUsed, signal)));
+        built.jaw = jawUsed;
         // 期間選取已變（或已被取消）、或 jaw 已改（由改 jaw 時啟動的 sync 重載）就丟棄，避免殘留
-        if (!selected.has(f) || loaded.has(f) || effectiveJaw(f) !== jawUsed) {
+        if (!selected.has(f) || loaded.has(f) || (jawUsed && effectiveJaw(f) !== jawUsed)) {
           built.mesh.geometry.dispose();
           (built.mesh.material as THREE.Material).dispose();
           return;
@@ -863,7 +889,11 @@ async function browse(path: string): Promise<void> {
       const full = join(curDir, f.name);
       const li = addItem(`${f.name} (${(f.size / 1048576).toFixed(1)} MB)`, '', (e) => clickFile(full, e));
       li.dataset.path = full;
+      const badge = document.createElement('span');
+      badge.className = 'jaw-badge';
+      li.prepend(badge);
     }
+    updateJawBadges();
     if (l.selected) {
       // 貼上的是檔案路徑：只選它
       const full = join(curDir, l.selected);
@@ -890,11 +920,20 @@ async function browse(path: string): Promise<void> {
 pathEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void browse(pathEl.value);
 });
-jawEl.addEventListener('change', () => {
-  // 全域 jaw 只是預設值：已各自指定的檔案不受影響，其餘的舊 .lobj 才需要重新載入
-  reloadFiles([...loaded.keys()].filter((f) => isLegacyLobj(f) && !jawOf.has(f)));
-  renderPanel(); // 「轉 lobj2」鈕是否出現取決於有沒有指定 jaw
-});
+function onJawRegexChange(): void {
+  const { res, bad } = parseJawRegexes(jawReEl.value);
+  jawRegexes = res;
+  jawReEl.classList.toggle('bad', bad.length > 0);
+  jawReEl.title = (bad.length ? `語法錯誤已略過：${bad.join('、')}\n` : '') + JAW_RE_TIP;
+  updateJawBadges();
+  // 已各自指定的檔案不受影響；其餘舊 .lobj 只重載判定結果真的變了的
+  reloadFiles([...loaded].filter(([f, l]) => isLegacyLobj(f) && l.jaw !== effectiveJaw(f)).map(([f]) => f));
+  renderPanel(); // 卡片上「轉 lobj2」的 jaw 與提示要跟著更新
+}
+const JAW_RE_TIP = '舊 .lobj 的上 / 下顎（暫時作法）：檔名符合任一個 regex 就是 upper，否則 lower。\n以 ; 分隔、不分大小寫。個別檔案可在右側物件卡片各自指定。';
+jawReEl.title = JAW_RE_TIP;
+jawReEl.addEventListener('input', onJawRegexChange);
+onJawRegexChange();
 
 /** 後端通知「有人用 `lobj-view <檔案>` 開檔」：根資料夾已換，舊的選取與模型都作廢，改顯示新的。 */
 async function openFromServer(path: string): Promise<void> {
