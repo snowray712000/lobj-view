@@ -77,6 +77,7 @@ let probe: HTMLElement | null = null;
 
 /** 把 CSS 變數（隨目前主題）解析成 three.js 的顏色。 */
 export function resolveCssColor(varName: string): THREE.Color {
+  if (varName.startsWith('#')) return new THREE.Color(varName); // 自訂顏色（color dialog）
   if (!probe) {
     probe = document.createElement('span');
     probe.style.display = 'none';

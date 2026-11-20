@@ -62,3 +62,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: i18n, vi, Vietnamese, Tiếng Việt, Dict, LANGS, DICTS, hàm trên, hàm dưới, 1.10.4
 - [2026/s4/261120h_collapsible_labels_v1105.md](2026/s4/261120h_collapsible_labels_v1105.md) — 1.10.5: object-card label list is a collapsed `<details>` showing "N 種label" (en/vi translated); open state kept across re-render.
   Keywords: details, summary, card-labels, labelsOpen, labelKinds, renderInfo, labelCounts, collapse, i18n, 1.10.5
+- [2026/s4/261120i_common_settings_hide_solo_v1121.md](2026/s4/261120i_common_settings_hide_solo_v1121.md) — 1.12.1: right panel becomes one shared settings block (alpha/wire/normal/curv/color incl. custom colour, plus info/jaw/convert/legend of the "active" object) and an object list with h (hide) / s (solo, others capped at alpha 0.5); click filename flashes AABB 2 s.
+  Keywords: common settings, effProps, hiddenSet, soloSet, solo, hide, active object, Box3Helper, AABB, custom color, conic-gradient, input type=color, buildSettings, buildRow, buildDetail, 1.12.1

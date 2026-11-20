@@ -373,14 +373,38 @@ panelToggleEl.addEventListener('click', () => {
   panelToggleEl.setAttribute('aria-expanded', String(!collapsed));
 });
 
+/** 共同設定：alpha / wire / normal / curv / color 對所有物件一起生效（沒有 label 的模型，color 為「原色」時各自用自動配的顏色）。 */
+const common: ObjProps = defaultProps();
+/** 隱藏（h）與單獨（s）的檔案；取消選取後仍保留。 */
+const hiddenSet = new Set<string>();
+const soloSet = new Set<string>();
+const hasSolo = () => [...selected].some((f) => soloSet.has(f));
+
+/** 某檔案實際套用的屬性：共同設定 + 各檔自己的自動色 + solo 對 alpha 的調整（有 solo 時，非 solo 的 alpha 最高 0.5）。 */
+function effProps(f: string): ObjProps {
+  const own = getProps(f);
+  const useOwn = common.color === null;
+  const alpha = hasSolo() && !soloSet.has(f) ? Math.min(common.alpha, 0.5) : common.alpha;
+  return { ...common, alpha, color: useOwn ? own.color : common.color, mix: useOwn ? own.mix : common.mix };
+}
+
 function updateProps(f: string): void {
   const l = loaded.get(f);
-  if (l) applyProps(l.mesh, l.orig, getProps(f));
+  if (!l) return;
+  applyProps(l.mesh, l.orig, effProps(f));
+  l.mesh.visible = !hiddenSet.has(f); // 邊線 / 法向量是 mesh 的子物件，跟著隱藏
 }
+const updateAll = (): void => {
+  for (const f of loaded.keys()) updateProps(f);
+};
+const renderAllLegends = (): void => {
+  for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.curv-legend')) renderLegend(el);
+};
 
 function renderPanel(): void {
   panelToggleEl.textContent = t().objects(selected.size);
   panelBodyEl.replaceChildren();
+  panelBodyEl.appendChild(buildSettings());
   if (!selected.size) {
     const empty = document.createElement('div');
     empty.className = 'hint';
@@ -388,21 +412,88 @@ function renderPanel(): void {
     panelBodyEl.appendChild(empty);
     return;
   }
-  for (const f of selected) panelBodyEl.appendChild(buildCard(f));
+  const head = document.createElement('div');
+  head.className = 'obj-head';
+  const h = document.createElement('span');
+  h.textContent = 'h';
+  h.title = t().hideTip;
+  const sl = document.createElement('span');
+  sl.textContent = 's';
+  sl.title = t().soloTip;
+  head.append(h, sl);
+  panelBodyEl.appendChild(head);
+  for (const f of selected) panelBodyEl.appendChild(buildRow(f));
   renderInfo();
 }
 
-function buildCard(f: string): HTMLElement {
-  const p = getProps(f);
+/** 物件清單的一列：h（hide）、s（solo）核取方塊 + 檔名（點檔名＝設為作用中），。 */
+function buildRow(f: string): HTMLElement {
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = 'card obj-row' + (f === activeFile() ? ' active' : '');
 
+  const top = document.createElement('div');
+  top.className = 'obj-top';
+  const check = (set: Set<string>, tip: string) => {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = set.has(f);
+    box.title = tip;
+    box.addEventListener('change', () => {
+      if (box.checked) set.add(f);
+      else set.delete(f);
+      updateAll(); // solo 會影響其他檔案的 alpha
+    });
+    return box;
+  };
+  const title = document.createElement('span');
+  title.className = 'card-title';
+  title.textContent = f.slice(f.lastIndexOf('/') + 1);
+  title.title = f;
+  title.addEventListener('click', () => {
+    active = f;
+    renderPanel();
+    flashAabb(f);
+  });
+  top.append(check(hiddenSet, t().hideTip), check(soloSet, t().soloTip), title);
+  card.appendChild(top);
+
+  return card;
+}
+
+let aabb: THREE.Box3Helper | null = null;
+let aabbTimer = 0;
+function clearAabb(): void {
+  clearTimeout(aabbTimer);
+  if (aabb) {
+    scene.remove(aabb);
+    aabb.geometry.dispose();
+    (aabb.material as THREE.Material).dispose();
+    aabb = null;
+  }
+}
+/** 點選物件時，把它的 AABB 外框顯示約 2 秒（再點別的物件或重新點選會先清掉舊的）。 */
+function flashAabb(f: string): void {
+  clearAabb();
+  const l = loaded.get(f);
+  if (!l) return;
+  aabb = new THREE.Box3Helper(new THREE.Box3().setFromObject(l.mesh), 0xffcc00);
+  scene.add(aabb);
+  aabbTimer = window.setTimeout(clearAabb, 2000);
+}
+
+/** 目前「作用中」的物件（點清單的檔名切換）；沒指定或已取消選取時用第一個。 */
+let active = '';
+const activeFile = (): string => (selected.has(active) ? active : ([...selected][0] ?? ''));
+
+/** 共同處的物件資訊：作用中物件的檔名、頂點 / 三角形 / labels、jaw、轉 lobj2。 */
+function buildDetail(card: HTMLElement): void {
+  const f = activeFile();
+  if (!f) return;
   const title = document.createElement('div');
   title.className = 'card-title';
   title.textContent = f.slice(f.lastIndexOf('/') + 1);
   title.title = f;
   card.appendChild(title);
-
   const info = document.createElement('div');
   info.className = 'card-info';
   info.dataset.path = f;
@@ -445,6 +536,14 @@ function buildCard(f: string): HTMLElement {
     card.appendChild(jawRow);
   }
 
+}
+
+function buildSettings(): HTMLElement {
+  const p = common;
+  const card = document.createElement('div');
+  card.className = 'card settings';
+  buildDetail(card);
+
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const row = document.createElement('label');
     row.className = 'row';
@@ -471,7 +570,7 @@ function buildCard(f: string): HTMLElement {
   card.appendChild(
     slider('alpha', p.alpha, (v) => {
       p.alpha = v;
-      updateProps(f);
+      updateAll();
     }),
   );
 
@@ -485,10 +584,9 @@ function buildCard(f: string): HTMLElement {
   wireBox.title = t().wireTip;
   wireBox.addEventListener('change', () => {
     p.wire = wireBox.checked;
-    updateProps(f);
+    updateAll();
   });
   wireRow.append(wireName, wireBox);
-  card.appendChild(wireRow);
 
   const normRow = document.createElement('label');
   normRow.className = 'row';
@@ -500,10 +598,13 @@ function buildCard(f: string): HTMLElement {
   normBox.title = t().normalTip;
   normBox.addEventListener('change', () => {
     p.normal = normBox.checked;
-    updateProps(f);
+    updateAll();
   });
   normRow.append(normName, normBox);
-  card.appendChild(normRow);
+  const wnRow = document.createElement('div');
+  wnRow.className = 'row wn-row';
+  wnRow.append(wireRow, normRow);
+  card.appendChild(wnRow);
 
   // 曲率：勾選後以曲率上色（取代 color），旁邊選模式；下方顯示色階圖例
   const curvRow = document.createElement('label');
@@ -528,9 +629,6 @@ function buildCard(f: string): HTMLElement {
     curvSel.appendChild(o);
   }
   curvSel.value = p.curvMode;
-  const legend = document.createElement('div');
-  legend.className = 'curv-legend';
-  legend.dataset.path = f;
   // 截斷：上界百分位（50–100），各模式分開記；拖動時即時重新上色（排序已快取，只重算顏色）
   const clipRow = document.createElement('label');
   clipRow.className = 'row';
@@ -553,14 +651,14 @@ function buildCard(f: string): HTMLElement {
   clipInput.addEventListener('input', () => {
     p.curvClip[p.curvMode] = Number(clipInput.value);
     showClip();
-    updateProps(f);
-    renderLegend(legend);
+    updateAll();
+    renderAllLegends();
   });
   clipInput.addEventListener('dblclick', () => {
     p.curvClip[p.curvMode] = DEFAULT_CLIP[p.curvMode];
     showClip();
-    updateProps(f);
-    renderLegend(legend);
+    updateAll();
+    renderAllLegends();
   });
   clipRow.append(clipName, clipInput, clipNum);
 
@@ -583,31 +681,34 @@ function buildCard(f: string): HTMLElement {
   smoothInput.addEventListener('input', () => showSmooth(Number(smoothInput.value)));
   smoothInput.addEventListener('change', () => {
     p.curvSmooth = Number(smoothInput.value);
-    updateProps(f);
-    renderLegend(legend);
+    updateAll();
+    renderAllLegends();
   });
   smoothRow.append(smoothName, smoothInput, smoothNum);
 
   const refreshCurv = () => {
     curvSel.hidden = !p.curv;
-    legend.hidden = !p.curv;
     clipRow.hidden = !p.curv;
+    for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.curv-legend')) el.hidden = !p.curv;
     smoothRow.hidden = !p.curv;
     showClip();
     curvSel.title = curvSel.selectedOptions[0]?.title ?? '';
-    renderLegend(legend);
+    renderAllLegends();
   };
   curvBox.addEventListener('change', () => {
     p.curv = curvBox.checked;
-    updateProps(f);
+    updateAll();
     refreshCurv();
   });
   curvSel.addEventListener('change', () => {
     p.curvMode = curvSel.value as CurvMode;
-    updateProps(f);
+    updateAll();
     refreshCurv();
   });
   curvRow.append(curvName, curvBox, curvSel);
+  const legend = document.createElement('div');
+  legend.className = 'curv-legend';
+  legend.dataset.path = activeFile();
   card.append(curvRow, smoothRow, clipRow, legend);
   refreshCurv();
 
@@ -616,12 +717,19 @@ function buildCard(f: string): HTMLElement {
   swatches.className = 'swatches';
   const mixRow = slider(t().mix, p.mix, (v) => {
     p.mix = v;
-    updateProps(f);
+    updateAll();
   });
+  const customBtn = document.createElement('button');
+  const customInput = document.createElement('input');
   const refresh = () => {
     for (const b of swatches.querySelectorAll<HTMLButtonElement>('button')) {
+      if (b === customBtn) continue;
       b.classList.toggle('on', (b.dataset.color || null) === p.color);
     }
+    const isCustom = !!p.color && p.color.startsWith('#');
+    customBtn.classList.toggle('on', isCustom);
+    // 已選自訂色時，圓心顯示該顏色（外圈維持彩虹漸層）
+    customBtn.style.setProperty('--custom-dot', isCustom ? p.color! : 'transparent');
     mixRow.hidden = p.color === null;
   };
   const addSwatch = (color: string | null, label: string) => {
@@ -633,13 +741,27 @@ function buildCard(f: string): HTMLElement {
     else b.textContent = t().origShort;
     b.addEventListener('click', () => {
       p.color = color;
-      updateProps(f);
+      updateAll();
       refresh();
     });
     swatches.appendChild(b);
   };
   addSwatch(null, t().origTip);
   for (const n of PALETTE) addSwatch(`--system${n}`, n);
+  // 自訂：開系統的色彩對話框；選到的顏色以 #rrggbb 存
+  customBtn.type = 'button';
+  customBtn.className = 'custom-color';
+  customBtn.title = t().customColorTip;
+  customInput.type = 'color';
+  customInput.value = p.color?.startsWith('#') ? p.color : '#ff8800';
+  customInput.addEventListener('input', () => {
+    p.color = customInput.value;
+    updateAll();
+    refresh();
+  });
+  customBtn.addEventListener('click', () => customInput.click());
+  customBtn.appendChild(customInput);
+  swatches.appendChild(customBtn);
   const colorRow = document.createElement('div');
   colorRow.className = 'row';
   const colorName = document.createElement('span');
@@ -726,7 +848,7 @@ const fmtK = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 
 /** 曲率色階圖例：色條 + 兩端（signed 時含中間 0）的 κ 值；κ 單位為 1/模型單位，括號內為對應曲率半徑。 */
 function renderLegend(el: HTMLElement): void {
   const f = el.dataset.path!;
-  const p = getProps(f);
+  const p = common;
   const l = loaded.get(f);
   el.replaceChildren();
   if (!p.curv) return;
@@ -809,6 +931,7 @@ async function syncSelection(): Promise<void> {
     }
   }
   for (const f of [...failed.keys()]) if (!selected.has(f)) failed.delete(f);
+  updateAll(); // solo 只看已選取的檔案，選取變了其他檔的 alpha 要重算
   const todo = [...selected].filter((f) => !loaded.has(f));
   renderPanel();
   if (!todo.length) {
@@ -839,7 +962,7 @@ async function syncSelection(): Promise<void> {
             renderPanel(); // 卡片已先建好，重建才會顯示選中的色票
           }
         }
-        applyProps(built.mesh, built.orig, getProps(f));
+        updateProps(f);
         failed.delete(f);
         scene.add(built.mesh);
       } catch (e) {
