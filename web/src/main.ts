@@ -5,6 +5,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fetchLobj, labelCounts, listLobj, type LobjData } from './lobj';
 import { applyProps, curvatureColoring, defaultProps, PALETTE, pickAutoColor, resolveCssColor, type ObjProps } from './props';
 import { DEFAULT_CLIP, gradientCss, type CurvMode } from './curvature';
+import { applyStatic, getLang, LANGS, onLangChange, setLang, t } from './i18n';
+
+applyStatic(); // 靜態 HTML 先換成目前語言（預設中文）
 
 const container = document.getElementById('viewport')!;
 const backendEl = document.getElementById('backend')!;
@@ -18,11 +21,11 @@ container.appendChild(renderer.domElement);
 await renderer.init();
 
 const isWebGPU = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true;
-backendEl.textContent = isWebGPU ? 'WebGPU' : 'WebGL2 (fallback)';
 backendEl.className = isWebGPU ? 'ok' : 'warn';
-if (!isWebGPU && !window.isSecureContext) {
-  backendEl.textContent += ' — 非 secure context，請改用 localhost / ssh -L';
-}
+const renderBackend = () => {
+  backendEl.textContent = (isWebGPU ? 'WebGPU' : 'WebGL2 (fallback)') + (!isWebGPU && !window.isSecureContext ? t().notSecure : '');
+};
+renderBackend();
 
 // --- scene ---
 const scene = new THREE.Scene();
@@ -150,7 +153,8 @@ interface Loaded {
   labelJaw?: Jaw | 'both';
   /** 載入時用的上 / 下顎（舊 .lobj 才有）；判定改變時據此決定要不要重載 */
   jaw?: 'upper' | 'lower';
-  info: string;
+  /** 頂點數、三角形數與 label 統計（顯示時才依目前語言組字串） */
+  info: { verts: number; tris: number; counts: string };
   /** 檔案原本的頂點顏色，color 屬性設回「不設定」時用來還原 */
   orig: Float32Array;
   /** 沒有任何 label（.stl / .obj / .ply，或 labels 全為 -1）；載入時會自動配一個顏色 */
@@ -218,17 +222,17 @@ function updateJawBadges(): void {
     let j: Jaw, src: string, bad: boolean, why = '';
     if (isJawFile(f)) {
       j = effectiveJaw(f);
-      src = jawOf.has(f) ? '個別指定' : '依 regex 判定';
+      src = jawOf.has(f) ? t().jawSrcManual : t().jawSrcRegex;
       bad = jawConflict(f, j);
-      if (bad) why = '；異常：檔名文字與判定結果矛盾';
+      if (bad) why = t().jawWhyConflict;
     } else if (f.toLowerCase().endsWith('.lobj2') && loaded.has(f)) {
       // .lobj2 要載入後才看得到 label：牙位能判定就用牙位，否則（沒有牙，例如 -1 全滿）退回檔名 regex
       const lj = loaded.get(f)!.labelJaw;
       j = lj && lj !== 'both' ? lj : effectiveJaw(f);
-      src = lj && lj !== 'both' ? '依牙位 label' : jawOf.has(f) ? '個別指定' : 'label 無牙，依檔名 regex 判定';
+      src = lj && lj !== 'both' ? t().jawSrcLabel : jawOf.has(f) ? t().jawSrcManual : t().jawSrcNoTooth;
       bad = lj === 'both' || jawConflict(f, j);
-      if (lj === 'both') why = '；異常：label 同時有上顎與下顎的牙';
-      else if (bad) why = '；異常：檔名文字與判定結果矛盾';
+      if (lj === 'both') why = t().jawWhyBoth;
+      else if (bad) why = t().jawWhyConflict;
     } else {
       b.replaceChildren();
       b.title = '';
@@ -239,7 +243,7 @@ function updateJawBadges(): void {
     s.textContent = bad ? 'er' : j === 'upper' ? 'up' : 'lo';
     s.className = bad ? 'bad' : 'on';
     b.replaceChildren(s);
-    b.title = `${j}（${src}）${why}`;
+    b.title = t().jawBadgeTip(j, src, why);
   }
 }
 
@@ -250,12 +254,10 @@ function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
   dlg.className = 'convert-dlg';
   const h = document.createElement('div');
   h.className = 'convert-title';
-  h.textContent = `轉成 .lobj2：${name}`;
+  h.textContent = t().convTitle(name);
   const p = document.createElement('div');
   p.className = 'hint';
-  p.textContent = isLegacyLobj(f)
-    ? `以 ${jaw} 將 label 換成 FDI，存成同資料夾同名的 .lobj2；新檔的建立 / 修改 / 存取時間與舊檔相同。`
-    : `只改副檔名存成同資料夾同名的 .lobj2（沒有 label，labels 全是 -1）；新檔的建立 / 修改 / 存取時間與舊檔相同。`;
+  p.textContent = isLegacyLobj(f) ? t().convDescLobj(jaw) : t().convDescOther;
   const opts = document.createElement('div');
   opts.className = 'convert-opts';
   const radio = (value: string, text: string, checked: boolean) => {
@@ -268,17 +270,17 @@ function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
     l.append(r, ' ', text);
     return l;
   };
-  opts.append(radio('1', '轉換後刪除舊檔（預設）', true), radio('0', '保留舊檔', false));
+  opts.append(radio('1', t().convDelete, true), radio('0', t().convKeep, false));
   const msg = document.createElement('div');
   msg.className = 'convert-msg';
   const btns = document.createElement('div');
   btns.className = 'convert-btns';
   const cancel = document.createElement('button');
   cancel.type = 'button';
-  cancel.textContent = '取消';
+  cancel.textContent = t().cancel;
   const ok = document.createElement('button');
   ok.type = 'button';
-  ok.textContent = '轉換';
+  ok.textContent = t().convOk;
   btns.append(cancel, ok);
   dlg.append(h, p, opts, msg, btns);
   document.body.appendChild(dlg);
@@ -291,7 +293,7 @@ function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
   ok.addEventListener('click', async () => {
     const del = (dlg.querySelector('input[name=del]:checked') as HTMLInputElement).value === '1';
     ok.disabled = cancel.disabled = true;
-    msg.textContent = '轉換中…';
+    msg.textContent = t().converting;
     try {
       const r = await fetch('/api/lobj-convert', {
         method: 'POST',
@@ -310,9 +312,9 @@ function convertDialog(f: string, jaw: 'upper' | 'lower'): void {
       close();
       await browse(curDir); // 重新整理清單（舊檔消失、新檔出現），並維持選取
       await syncSelection();
-      infoEl.textContent = `已轉成 ${res.new_path}${res.deleted ? '，舊檔已刪除' : ''}`;
+      infoEl.textContent = t().convDone(res.new_path, res.deleted);
     } catch (e) {
-      msg.textContent = `失敗：${e instanceof Error ? e.message : e}`;
+      msg.textContent = t().failed(e instanceof Error ? e.message : String(e));
       ok.disabled = cancel.disabled = false;
     }
   });
@@ -355,7 +357,7 @@ function buildMesh(data: LobjData): Loaded {
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: meshSide() }),
   );
   const counts = [...labelCounts(data.labels)].map(([l, n]) => `${l}:${n}`).join(' ');
-  const info = `頂點 ${data.vertices.length / 3}、三角形 ${data.triangles.length / 3}` + (counts ? `\nlabels ${counts}` : '');
+  const info = { verts: data.vertices.length / 3, tris: data.triangles.length / 3, counts };
   const unlabeled = !data.labels || data.labels.every((l) => l < 0);
   return { mesh, info, orig, unlabeled, fileHasColors: data.fileHasColors !== false, labelJaw: jawFromLabels(data.labels) };
 }
@@ -376,12 +378,12 @@ function updateProps(f: string): void {
 }
 
 function renderPanel(): void {
-  panelToggleEl.textContent = `物件 (${selected.size})`;
+  panelToggleEl.textContent = t().objects(selected.size);
   panelBodyEl.replaceChildren();
   if (!selected.size) {
     const empty = document.createElement('div');
     empty.className = 'hint';
-    empty.textContent = '尚未選取檔案';
+    empty.textContent = t().noSelection;
     panelBodyEl.appendChild(empty);
     return;
   }
@@ -413,11 +415,11 @@ function buildCard(f: string): HTMLElement {
     jawName.textContent = 'jaw';
     const jawSel = document.createElement('select');
     jawSel.className = 'card-jaw';
-    jawSel.title = '這個檔案是上顎或下顎；「預設」= 依左側 regex 判定';
-    for (const [v, t] of [['', '預設'], ['upper', 'upper（上）'], ['lower', 'lower（下）']] as const) {
+    jawSel.title = t().cardJawTip;
+    for (const [v, text] of [['', t().jawDefault], ['upper', t().jawUpper], ['lower', t().jawLower]] as const) {
       const o = document.createElement('option');
       o.value = v;
-      o.textContent = t;
+      o.textContent = text;
       jawSel.appendChild(o);
     }
     jawSel.value = jawOf.get(f) ?? '';
@@ -434,8 +436,8 @@ function buildCard(f: string): HTMLElement {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'card-convert';
-      btn.textContent = '轉 lobj2';
-      btn.title = `依 ${known} 把這個檔案轉存成 .lobj2${isLegacyLobj(f) ? '（label 改為 FDI）' : '（沒有 label，只改副檔名）'}，新檔沿用舊檔的日期`;
+      btn.textContent = t().convBtn;
+      btn.title = t().convBtnTip(known, isLegacyLobj(f));
       btn.addEventListener('click', () => void convertDialog(f, known));
       jawRow.appendChild(btn);
     }
@@ -479,7 +481,7 @@ function buildCard(f: string): HTMLElement {
   const wireBox = document.createElement('input');
   wireBox.type = 'checkbox';
   wireBox.checked = p.wire;
-  wireBox.title = '顯示 mesh 的邊線（黑線）';
+  wireBox.title = t().wireTip;
   wireBox.addEventListener('change', () => {
     p.wire = wireBox.checked;
     updateProps(f);
@@ -494,7 +496,7 @@ function buildCard(f: string): HTMLElement {
   const normBox = document.createElement('input');
   normBox.type = 'checkbox';
   normBox.checked = p.normal;
-  normBox.title = '顯示每個頂點的法向量（藍線）';
+  normBox.title = t().normalTip;
   normBox.addEventListener('change', () => {
     p.normal = normBox.checked;
     updateProps(f);
@@ -510,17 +512,17 @@ function buildCard(f: string): HTMLElement {
   const curvBox = document.createElement('input');
   curvBox.type = 'checkbox';
   curvBox.checked = p.curv;
-  curvBox.title = '以曲率上色（Normal Variation，沿邊計算），會取代 color';
+  curvBox.title = t().curvTip;
   const curvSel = document.createElement('select');
   curvSel.className = 'curv-mode';
-  for (const [v, t, tip] of [
-    ['signed', '凸凹', '相鄰邊法曲率的平均（帶正負號）：紅 = 凸（牙尖、牙脊），藍 = 凹（窩溝、牙齦線）'],
-    ['max', 'max |κ|', '相鄰邊 |κ| 的最大值：邊緣、稜線最亮'],
-    ['min', 'min |κ|', '相鄰邊 |κ| 的最小值：各方向都彎的地方（如牙尖頂）才亮'],
+  for (const [v, text, tip] of [
+    ['signed', t().curvSigned, t().curvSignedTip],
+    ['max', 'max |κ|', t().curvMaxTip],
+    ['min', 'min |κ|', t().curvMinTip],
   ] as const) {
     const o = document.createElement('option');
     o.value = v;
-    o.textContent = t;
+    o.textContent = text;
     o.title = tip;
     curvSel.appendChild(o);
   }
@@ -532,7 +534,7 @@ function buildCard(f: string): HTMLElement {
   const clipRow = document.createElement('label');
   clipRow.className = 'row';
   const clipName = document.createElement('span');
-  clipName.textContent = '截斷';
+  clipName.textContent = t().clip;
   const clipInput = document.createElement('input');
   clipInput.type = 'range';
   clipInput.min = '50';
@@ -545,9 +547,7 @@ function buildCard(f: string): HTMLElement {
     clipInput.value = String(v);
     clipNum.textContent = `p${v}`;
     clipRow.title =
-      p.curvMode === 'signed'
-        ? `色階範圍 = ±|κ| 的第 ${v} 百分位；越小對比越強（細微凹凸也上色），越大越不受雜訊極值影響`
-        : `色階範圍 = 第 ${Math.min(1, 100 - v)}–${v} 百分位；99.5 即 Python clip_percentile 的設定`;
+      p.curvMode === 'signed' ? t().clipTipSigned(v) : t().clipTipSeq(Math.min(1, 100 - v), v);
   };
   clipInput.addEventListener('input', () => {
     p.curvClip[p.curvMode] = Number(clipInput.value);
@@ -566,9 +566,9 @@ function buildCard(f: string): HTMLElement {
   // 平滑：算曲率前先把法向量平滑幾次，壓掉掃描雜訊；放開滑鼠（change）才重算，拖動中只更新數字
   const smoothRow = document.createElement('label');
   smoothRow.className = 'row';
-  smoothRow.title = '算曲率前先把法向量與相鄰頂點平均幾次（頂點位置不動），壓掉掃描雜訊、保留較大尺度的凹凸；只影響曲率顏色。0 = 不平滑';
+  smoothRow.title = t().smoothTip;
   const smoothName = document.createElement('span');
-  smoothName.textContent = '平滑';
+  smoothName.textContent = t().smooth;
   const smoothInput = document.createElement('input');
   smoothInput.type = 'range';
   smoothInput.min = '0';
@@ -577,7 +577,7 @@ function buildCard(f: string): HTMLElement {
   smoothInput.value = String(p.curvSmooth);
   const smoothNum = document.createElement('span');
   smoothNum.className = 'num';
-  const showSmooth = (v: number) => (smoothNum.textContent = v ? `×${v}` : '關');
+  const showSmooth = (v: number) => (smoothNum.textContent = v ? `×${v}` : t().smoothOff);
   showSmooth(p.curvSmooth);
   smoothInput.addEventListener('input', () => showSmooth(Number(smoothInput.value)));
   smoothInput.addEventListener('change', () => {
@@ -613,7 +613,7 @@ function buildCard(f: string): HTMLElement {
   // color：第一格「原色」= 不設定
   const swatches = document.createElement('div');
   swatches.className = 'swatches';
-  const mixRow = slider('疊加', p.mix, (v) => {
+  const mixRow = slider(t().mix, p.mix, (v) => {
     p.mix = v;
     updateProps(f);
   });
@@ -629,7 +629,7 @@ function buildCard(f: string): HTMLElement {
     b.title = label;
     b.dataset.color = color ?? '';
     if (color) b.style.background = `var(${color})`;
-    else b.textContent = '原';
+    else b.textContent = t().origShort;
     b.addEventListener('click', () => {
       p.color = color;
       updateProps(f);
@@ -637,7 +637,7 @@ function buildCard(f: string): HTMLElement {
     });
     swatches.appendChild(b);
   };
-  addSwatch(null, '原色（不設定）');
+  addSwatch(null, t().origTip);
   for (const n of PALETTE) addSwatch(`--system${n}`, n);
   const colorRow = document.createElement('div');
   colorRow.className = 'row';
@@ -740,18 +740,18 @@ function renderLegend(el: HTMLElement): void {
     ticks.appendChild(s);
   };
   if (!l) {
-    tick('載入後計算…');
+    tick(t().legendPending);
   } else {
     const { lo, hi } = curvatureColoring(l.mesh, p.curvMode, p.curvClip[p.curvMode], p.curvSmooth);
     if (p.curvMode === 'signed') {
-      tick(`凹 ${fmtK(lo)}`);
+      tick(`${t().concave} ${fmtK(lo)}`);
       tick('0');
-      tick(`凸 +${fmtK(hi)}`);
-      el.title = `κ 單位 1/mm；±${fmtK(hi)} ≈ 曲率半徑 ${fmtK(1 / hi)} mm（|κ| ${p.curvClip.signed} 百分位截斷）`;
+      tick(`${t().convex} +${fmtK(hi)}`);
+      el.title = t().legendTipSigned(fmtK(hi), fmtK(1 / hi), p.curvClip.signed);
     } else {
       tick(fmtK(lo));
       tick(fmtK(hi));
-      el.title = `κ 單位 1/mm；${Math.min(1, 100 - p.curvClip[p.curvMode])}%–${p.curvClip[p.curvMode]}% 百分位截斷後上色`;
+      el.title = t().legendTipSeq(Math.min(1, 100 - p.curvClip[p.curvMode]), p.curvClip[p.curvMode]);
     }
   }
   el.append(bar, ticks);
@@ -760,9 +760,9 @@ function renderLegend(el: HTMLElement): void {
 /** .lobj2 的卡片資訊多一行 jaw：牙位 label 能判斷就用牙位，沒有牙就依檔名 regex。 */
 function lobj2JawNote(f: string, l: Loaded): string {
   if (!f.toLowerCase().endsWith('.lobj2')) return '';
-  if (l.labelJaw === 'both') return '\njaw：上下顎的牙都有（異常）';
-  if (l.labelJaw) return `\njaw：${l.labelJaw}（依牙位 label）`;
-  return `\njaw：${effectiveJaw(f)}（label 沒有牙，依檔名 regex）`;
+  if (l.labelJaw === 'both') return t().lobj2JawBoth;
+  if (l.labelJaw) return t().lobj2JawLabel(l.labelJaw);
+  return t().lobj2JawRegex(effectiveJaw(f));
 }
 
 /** 更新右側各卡片的資訊（頂點、三角形、labels；載入中 / 失敗）。 */
@@ -772,7 +772,11 @@ function renderInfo(): void {
   for (const el of panelBodyEl.querySelectorAll<HTMLElement>('.card-info')) {
     const f = el.dataset.path!;
     const l = loaded.get(f);
-    el.textContent = l ? l.info + lobj2JawNote(f, l) : failed.has(f) ? `載入失敗：${failed.get(f)}` : '載入中…';
+    el.textContent = l
+      ? t().meshInfo(l.info.verts, l.info.tris) + (l.info.counts ? `\nlabels ${l.info.counts}` : '') + lobj2JawNote(f, l)
+      : failed.has(f)
+        ? t().loadFailed(failed.get(f)!)
+        : t().loading;
   }
 }
 
@@ -895,10 +899,9 @@ function renderBusy(): void {
   if (!shown.length) return;
   const first = shown[0];
   const secs = Math.floor((now - first.start) / 1000);
-  const more = shown.length > 1 ? `等 ${shown.length} 項` : first.label;
-  busyTextEl.textContent = `處理中… ${more}（${secs} 秒）`;
-  busyTextEl.title = `${first.label}
-第一次進入 .zip 需要解壓縮；按取消就不會進去（原 zip 不會被改動）`;
+  const more = shown.length > 1 ? t().busyMore(shown.length) : first.label;
+  busyTextEl.textContent = t().busyText(more, secs);
+  busyTextEl.title = t().busyTip(first.label);
 }
 
 /** 執行一個可取消的請求；超過一小段時間才顯示「處理中」提示。 */
@@ -960,15 +963,15 @@ async function browse(path: string): Promise<void> {
     } else {
       markSelected(); // 其他資料夾已選的檔案仍保留顯示
       if (!l.dirs.length && !l.files.length && !l.parent) {
-        infoEl.textContent = '--dir 資料夾內沒有 .lobj / .lobj2 / .stl / .obj / .ply';
+        infoEl.textContent = t().emptyDir;
       }
     }
   } catch (e) {
     if (isAbort(e)) {
-      if (browseCtl === mine) infoEl.textContent = '已取消（停留在原資料夾）';
+      if (browseCtl === mine) infoEl.textContent = t().browseCanceled;
       return;
     }
-    infoEl.textContent = `無法開啟路徑：${e instanceof Error ? e.message : e}`;
+    infoEl.textContent = t().cannotOpenPath(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -979,14 +982,17 @@ function onJawRegexChange(): void {
   const { res, bad } = parseJawRegexes(jawReEl.value);
   jawRegexes = res;
   jawReEl.classList.toggle('bad', bad.length > 0);
-  jawReEl.title = (bad.length ? `語法錯誤已略過：${bad.join('、')}\n` : '') + JAW_RE_TIP;
+  jawReBad = bad;
+  setJawReTitle();
   updateJawBadges();
   // 已各自指定的檔案不受影響；其餘舊 .lobj 只重載判定結果真的變了的
   reloadFiles([...loaded].filter(([f, l]) => isLegacyLobj(f) && l.jaw !== effectiveJaw(f)).map(([f]) => f));
   renderPanel(); // 卡片上「轉 lobj2」的 jaw 與提示要跟著更新
 }
-const JAW_RE_TIP = '舊 .lobj 的上 / 下顎（暫時作法）：檔名符合任一個 regex 就是 upper，否則 lower。\n以 ; 分隔、不分大小寫。個別檔案可在右側物件卡片各自指定。';
-jawReEl.title = JAW_RE_TIP;
+let jawReBad: string[] = [];
+function setJawReTitle(): void {
+  jawReEl.title = (jawReBad.length ? t().jawReBad(jawReBad) : '') + t().jawReTip;
+}
 jawReEl.addEventListener('input', onJawRegexChange);
 onJawRegexChange();
 
@@ -1100,14 +1106,16 @@ lightEl.addEventListener('change', () => {
 });
 
 // --- 後端連線檢查 ---
+let healthErr: unknown = null; // 連不上時記住原因，切換語言時重組訊息
 fetch('/api/health')
   .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
-  .then((t) => {
-    healthEl.textContent = t;
+  .then((text) => {
+    healthEl.textContent = text;
     healthEl.className = 'ok';
   })
   .catch((e) => {
-    healthEl.textContent = `無法連線 (${e})`;
+    healthErr = e;
+    healthEl.textContent = t().healthErr(e);
     healthEl.className = 'err';
   });
 
@@ -1138,29 +1146,31 @@ function statStat(text: string, level: 'ok' | 'warn' | 'err', title: string): HT
 
 const level = (pct: number): 'ok' | 'warn' | 'err' => (pct >= 90 ? 'err' : pct >= 70 ? 'warn' : 'ok');
 
+let lastStats: ServerStats | null = null;
 function renderStats(s: ServerStats): void {
+  lastStats = s;
   const parts: HTMLElement[] = [
-    statStat(`${s.people} 人 / ${s.tabs} 分頁`, 'ok', '人＝不同的來源 IP；經 ssh -L 轉發的連線都來自 127.0.0.1，只算一人'),
+    statStat(t().people(s.people, s.tabs), 'ok', t().peopleTip),
   ];
   if (s.ready) {
     const memPct = s.mem_total ? (s.mem_used / s.mem_total) * 100 : 0;
     parts.push(
-      statStat(`CPU ${s.cpu}%`, level(s.cpu), `伺服器 ${s.cores} 邏輯核心的整體使用率；lobj-view 本身約 ${s.proc_cpu}%`),
-      statStat(`記憶體 ${gb(s.mem_used)}/${gb(s.mem_total)} GB`, level(memPct), `伺服器整體；lobj-view 本身 ${(s.proc_mem / 1048576).toFixed(0)} MB`),
+      statStat(`CPU ${s.cpu}%`, level(s.cpu), t().cpuTip(s.cores, s.proc_cpu)),
+      statStat(t().mem(gb(s.mem_used), gb(s.mem_total)), level(memPct), t().memTip((s.proc_mem / 1048576).toFixed(0))),
     );
     if (s.gpu) {
       parts.push(
         statStat(
           `GPU ${s.gpu.util}%`,
           level(s.gpu.util),
-          `${s.gpu.name}；顯存 ${s.gpu.mem_used_mb}/${s.gpu.mem_total_mb} MB。這是伺服器的 GPU，3D 繪圖用的是開瀏覽器那台電腦的 GPU`,
+          t().gpuTip(s.gpu.name, s.gpu.mem_used_mb, s.gpu.mem_total_mb),
         ),
       );
     }
   } else {
-    parts.push(statStat('資源取樣中…', 'ok', ''));
+    parts.push(statStat(t().sampling, 'ok', ''));
   }
-  const nodes: (Node | string)[] = ['伺服器：'];
+  const nodes: (Node | string)[] = [t().serverPrefix];
   parts.forEach((p, i) => nodes.push(...(i ? [' · ', p] : [p])));
   status3El.replaceChildren(...nodes);
 }
@@ -1253,7 +1263,7 @@ verEl.addEventListener('click', async () => {
     versionsMd = await r.text();
     renderVersions(versionsMd);
   } catch (e) {
-    versionsBodyEl.textContent = `無法取得版本紀錄：${e instanceof Error ? e.message : e}`;
+    versionsBodyEl.textContent = t().versionsErr(e instanceof Error ? e.message : String(e));
   }
 });
 detailEl.addEventListener('change', () => {
@@ -1289,9 +1299,11 @@ async function checkUpdate(force: boolean): Promise<UpdateInfo> {
   return (await r.json()) as UpdateInfo;
 }
 
+let lastUpdate: UpdateInfo | null = null;
 function showUpdateBadge(u: UpdateInfo): void {
+  lastUpdate = u;
   updateBtn.classList.toggle('has-update', u.newer);
-  updateBtn.textContent = u.newer ? `⬆ 有新版 v${u.latest}` : '檢查更新';
+  updateBtn.textContent = u.newer ? t().hasUpdate(u.latest) : t().checkUpdate;
 }
 
 function renderUpdate(u: UpdateInfo | null, msg = ''): void {
@@ -1303,28 +1315,28 @@ function renderUpdate(u: UpdateInfo | null, msg = ''): void {
   };
   updateBodyEl.replaceChildren();
   if (u) {
-    updateBodyEl.append(p(`目前版本 v${u.current}，GitHub 最新版 v${u.latest}`));
+    updateBodyEl.append(p(t().updCurrent(u.current, u.latest)));
     if (u.url) {
       const a = document.createElement('a');
       a.href = u.url;
       a.target = '_blank';
       a.rel = 'noopener';
-      a.textContent = '在 GitHub 查看這個版本';
+      a.textContent = t().updViewOnGithub;
       const wrap = p('');
       wrap.append(a);
       updateBodyEl.append(wrap);
     }
-    if (!u.newer) updateBodyEl.append(p('已是最新版。'));
-    else if (!u.canApply) updateBodyEl.append(p(u.reason ?? '目前無法線上更新', 'msg'));
+    if (!u.newer) updateBodyEl.append(p(t().updLatest));
+    else if (!u.canApply) updateBodyEl.append(p(u.reason ?? t().updCannot, 'msg'));
     else {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = `更新到 v${u.latest} 並重新啟動`;
+      b.textContent = t().updApply(u.latest);
       b.disabled = updating;
       b.addEventListener('click', () => void applyUpdate(u.latest));
       updateBodyEl.append(
         b,
-        p('會下載新版取代目前的執行檔，伺服器重新啟動後此頁自動重新整理（已開的模型需重新載入）。', 'hint'),
+        p(t().updApplyHint, 'hint'),
       );
     }
   }
@@ -1333,16 +1345,16 @@ function renderUpdate(u: UpdateInfo | null, msg = ''): void {
 
 async function applyUpdate(version: string): Promise<void> {
   updating = true;
-  renderUpdate(null, `下載 v${version} 中…（依網路速度約數秒到一分鐘）`);
+  renderUpdate(null, t().updDownloading(version));
   try {
     const r = await fetch('/api/update', { method: 'POST', headers: { 'X-Lobj-Requested': '1' } });
     if (!r.ok) throw new Error((await r.text()) || String(r.status));
   } catch (e) {
     updating = false;
-    renderUpdate(null, `更新失敗：${e instanceof Error ? e.message : e}`);
+    renderUpdate(null, t().updFailed(e instanceof Error ? e.message : String(e)));
     return;
   }
-  renderUpdate(null, `已更新到 v${version}，重新啟動中…`);
+  renderUpdate(null, t().updRestarting(version));
   // 伺服器重新啟動期間連線會失敗；等到回報新版本就重新整理
   const start = Date.now();
   const poll = async (): Promise<void> => {
@@ -1356,7 +1368,7 @@ async function applyUpdate(version: string): Promise<void> {
       /* 重新啟動中 */
     }
     if (Date.now() - start > 60_000) {
-      renderUpdate(null, '等候伺服器重新啟動逾時，請手動重新整理此頁（或重新執行 lobj-view）。');
+      renderUpdate(null, t().updTimeout);
       return;
     }
     setTimeout(() => void poll(), 1000);
@@ -1367,13 +1379,13 @@ async function applyUpdate(version: string): Promise<void> {
 updateBtn.addEventListener('click', async () => {
   updateEl.hidden = false;
   if (updating) return;
-  renderUpdate(null, '檢查中…');
+  renderUpdate(null, t().updChecking);
   try {
     const u = await checkUpdate(true);
     showUpdateBadge(u);
     renderUpdate(u);
   } catch (e) {
-    renderUpdate(null, `無法檢查更新：${e instanceof Error ? e.message : e}`);
+    renderUpdate(null, t().updCheckErr(e instanceof Error ? e.message : String(e)));
   }
 });
 document.getElementById('update-close')!.addEventListener('click', () => (updateEl.hidden = true));
@@ -1419,15 +1431,17 @@ async function assocCall(url: string, body?: unknown): Promise<Response> {
 
 function assocState(e: AssocExt): string {
   let s: string;
-  if (e.isDefault) s = '✓ 預設';
-  else if (e.registered) s = e.current ? `已註冊（目前預設：${e.current}）` : '已註冊';
-  else s = e.current ? `未註冊（目前預設：${e.current}）` : '未註冊';
+  if (e.isDefault) s = t().assocDefault;
+  else if (e.registered) s = e.current ? t().assocRegisteredCur(e.current) : t().assocRegistered;
+  else s = e.current ? t().assocUnregCur(e.current) : t().assocUnreg;
   // 註冊前已記錄原狀：取消註冊時會還原
-  if (e.hasBackup) s += `　↩ 還原為：${e.previous ?? '無預設'}`;
+  if (e.hasBackup) s += t().assocRestore(e.previous);
   return s;
 }
 
+let lastAssoc: AssocStatus | null = null;
 function renderAssoc(st: AssocStatus): void {
+  lastAssoc = st;
   assocBodyEl.replaceChildren();
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', cls = ''): HTMLElementTagNameMap[K] => {
     const n = document.createElement(tag);
@@ -1436,7 +1450,7 @@ function renderAssoc(st: AssocStatus): void {
     return n;
   };
   if (!st.supported) {
-    assocBodyEl.appendChild(el('p', '目前只支援 Windows 的副檔名關聯（Linux / macOS 尚未支援）。'));
+    assocBodyEl.appendChild(el('p', t().assocUnsupported));
     return;
   }
   const table = el('table');
@@ -1453,11 +1467,11 @@ function renderAssoc(st: AssocStatus): void {
     tr.append(td1, el('td', assocState(e)));
     table.appendChild(tr);
   }
-  const reg = el('button', '註冊所選');
+  const reg = el('button', t().assocRegister);
   reg.addEventListener('click', () => void assocAction('register'));
-  const unreg = el('button', '取消註冊並還原所選');
+  const unreg = el('button', t().assocUnregister);
   unreg.addEventListener('click', () => void assocAction('unregister'));
-  const sys = el('button', '開啟 Windows 預設應用程式設定');
+  const sys = el('button', t().assocSysSettings);
   sys.addEventListener('click', () => void assocCall('/api/assoc/settings'));
   assocBodyEl.append(
     table,
@@ -1465,13 +1479,8 @@ function renderAssoc(st: AssocStatus): void {
     unreg,
     sys,
     el('p', assocMsg, 'msg'),
-    el(
-      'p',
-      '註冊後，lobj-view 會出現在檔案右鍵「開啟檔案」的清單裡；雙擊檔案會交給執行中的 lobj-view（沒有就啟動並開瀏覽器）。.lobj / .lobj2 沒有其他程式佔用時會直接成為預設；' +
-        '.stl / .ply / .obj 通常已有預設程式，Windows 不允許程式自行覆蓋，註冊後請按右邊按鈕，到系統設定自己指定。',
-      'hint',
-    ),
-    el('p', `執行檔：${st.exe}`, 'hint'),
+    el('p', t().assocHint, 'hint'),
+    el('p', t().assocExe(st.exe), 'hint'),
   );
 }
 
@@ -1481,23 +1490,23 @@ async function loadAssoc(): Promise<void> {
     if (!r.ok) throw new Error(await r.text());
     renderAssoc((await r.json()) as AssocStatus);
   } catch (e) {
-    assocBodyEl.textContent = `無法取得關聯狀態：${e instanceof Error ? e.message : e}`;
+    assocBodyEl.textContent = t().assocErr(e instanceof Error ? e.message : String(e));
   }
 }
 
 async function assocAction(action: 'register' | 'unregister'): Promise<void> {
   const exts = [...assocChecked];
   if (!exts.length) {
-    assocMsg = '請至少勾選一個副檔名';
+    assocMsg = t().assocNeedOne;
   } else {
     const r = await assocCall('/api/assoc', { action, exts });
     if (r.ok) {
       const st = (await r.json()) as AssocStatus;
-      assocMsg = [action === 'register' ? '已註冊' : '已取消註冊並還原', ...(st.notes ?? [])].join('。');
+      assocMsg = [action === 'register' ? t().assocDoneReg : t().assocDoneUnreg, ...(st.notes ?? [])].join(t().sentenceSep);
       renderAssoc(st);
       return;
     }
-    assocMsg = `失敗：${await r.text()}`;
+    assocMsg = t().failed(await r.text());
   }
   void loadAssoc();
 }
@@ -1584,3 +1593,60 @@ themeEl.addEventListener('change', () => {
     }
   });
 })();
+
+// --- 語言：按鈕永遠寫「lang」，點開列出各語言（以該語言自己的名稱顯示），選擇會記住 ---
+(() => {
+  const btn = document.getElementById('lang-btn')!;
+  const menu = document.getElementById('lang-menu')!;
+  const close = () => {
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+  };
+  const build = () => {
+    menu.replaceChildren(
+      ...LANGS.map(({ code, name }) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'menuitemradio');
+        b.setAttribute('aria-checked', String(code === getLang()));
+        b.textContent = name;
+        b.addEventListener('click', () => {
+          close();
+          setLang(code);
+        });
+        return b;
+      }),
+    );
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!menu.hidden) return close();
+    build();
+    const r = btn.getBoundingClientRect();
+    menu.style.left = `${r.left}px`;
+    menu.style.top = `${r.bottom + 2}px`;
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(e.target as Node)) close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+})();
+
+// 切換語言：applyStatic 已換掉 HTML 上的字，這裡重繪 JS 產生的部分（已顯示過的一次性訊息維持原語言）
+onLangChange(() => {
+  renderBackend();
+  if (healthErr !== null) healthEl.textContent = t().healthErr(healthErr);
+  setJawReTitle();
+  renderPanel(); // 卡片整張重建（屬性存在 propsOf，不受影響），內含 renderInfo / updateJawBadges
+  updateJawBadges();
+  if (lastStats) renderStats(lastStats);
+  renderBusy();
+  if (lastUpdate) showUpdateBadge(lastUpdate); // 沒查過時 applyStatic 已換成「檢查更新」
+  if (!updateEl.hidden && !updating && lastUpdate) renderUpdate(lastUpdate);
+  if (!assocEl.hidden && lastAssoc) renderAssoc(lastAssoc);
+});
+renderPanel(); // 一開始就依目前語言顯示「物件 (0)」與空面板提示

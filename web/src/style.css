@@ -95,6 +95,52 @@ body {
   border: 1px solid var(--separator);
 }
 
+#lang-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--separator);
+}
+
+/* 語言選單：#hud .box 是 overflow: hidden，所以用 fixed 定位（開啟時由 JS 依按鈕位置擺放） */
+#lang-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 7em;
+  padding: 4px;
+  background: var(--secondarySystemBackground);
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+#lang-menu[hidden] {
+  display: none;
+}
+
+#lang-menu button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+#lang-menu button:hover {
+  background: color-mix(in srgb, var(--link) 20%, transparent);
+}
+
+#lang-menu button[aria-checked='true']::before {
+  content: '✓ ';
+}
+
+#lang-menu button[aria-checked='false']::before {
+  content: '\2003';
+}
+
 #update-btn.has-update {
   color: #fff;
   background: var(--systemGreen, #34c759);

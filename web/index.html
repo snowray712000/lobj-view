@@ -9,42 +9,43 @@
   <body>
     <div id="viewport"></div>
     <div id="hud">
-      <div id="hud-resize" title="拖曳調整左側寬度（雙擊還原）"></div>
+      <div id="hud-resize" data-i18n-title="hudResizeTip" title="拖曳調整左側寬度（雙擊還原）"></div>
       <div id="status" class="box">
         <b>lobj-view</b> @ccu-cadcam
-        <button id="ver" type="button" title="查看版本紀錄">…</button>
-        <button id="update-btn" type="button" title="檢查 GitHub 上有沒有新版">檢查更新</button>
+        <button id="ver" type="button" data-i18n-title="verTip" title="查看版本紀錄">…</button>
+        <button id="update-btn" type="button" data-i18n="checkUpdate" data-i18n-title="updateTip" title="檢查 GitHub 上有沒有新版">檢查更新</button>
+        <span id="lang-wrap"><button id="lang-btn" type="button" data-i18n-title="langTip" title="切換語言" aria-haspopup="menu" aria-expanded="false">lang</button><span id="lang-menu" role="menu" hidden></span></span>
         · server: <span id="health">…</span> · renderer: <span id="backend">…</span>
         <div id="status2">
-          光源:
-          <select id="light" title="固定：光源不隨視角；頭燈：光隨眼睛位置；三燈：頭燈加左右各一">
-            <option value="fixed">固定</option>
-            <option value="head">頭燈（跟隨眼睛）</option>
-            <option value="three">三燈（眼睛＋左＋右）</option>
+          <span data-i18n="light">光源:</span>
+          <select id="light" data-i18n-title="lightTip" title="固定：光源不隨視角；頭燈：光隨眼睛位置；三燈：頭燈加左右各一">
+            <option value="fixed" data-i18n="lightFixed">固定</option>
+            <option value="head" data-i18n="lightHead">頭燈（跟隨眼睛）</option>
+            <option value="three" data-i18n="lightThree">三燈（眼睛＋左＋右）</option>
           </select>
-          · <label><input id="grid-toggle" type="checkbox" /> 格線</label>
-          · <label><input id="ortho-toggle" type="checkbox" /> 正交投影</label>
-          · <label><input id="single-toggle" type="checkbox" title="只繪網格的正面（三角形逆時針那一面），背面不畫" /> 單面</label>
-          · 主題:
+          · <label><input id="grid-toggle" type="checkbox" /> <span data-i18n="grid">格線</span></label>
+          · <label><input id="ortho-toggle" type="checkbox" /> <span data-i18n="ortho">正交投影</span></label>
+          · <label data-i18n-title="singleTip" title="只繪網格的正面（三角形逆時針那一面），背面不畫"><input id="single-toggle" type="checkbox" /> <span data-i18n="single">單面</span></label>
+          · <span data-i18n="theme">主題:</span>
           <select id="theme">
-            <option value="">自動（系統）</option>
-            <option value="light">淺色</option>
-            <option value="dark">深色</option>
-            <option value="hc-light">高對比淺色</option>
-            <option value="hc-dark">高對比深色</option>
+            <option value="" data-i18n="themeAuto">自動（系統）</option>
+            <option value="light" data-i18n="themeLight">淺色</option>
+            <option value="dark" data-i18n="themeDark">深色</option>
+            <option value="hc-light" data-i18n="themeHcLight">高對比淺色</option>
+            <option value="hc-dark" data-i18n="themeHcDark">高對比深色</option>
           </select>
-          · <button id="assoc-open" type="button" title="把 lobj-view 設成副檔名的開啟程式（雙擊檔案即開啟）">預設程式…</button>
+          · <button id="assoc-open" type="button" data-i18n="assocOpen" data-i18n-title="assocOpenTip" title="把 lobj-view 設成副檔名的開啟程式（雙擊檔案即開啟）">預設程式…</button>
         </div>
-        <div id="status3" title="伺服器狀態（約每 5 秒更新）">伺服器：…</div>
+        <div id="status3" data-i18n="serverLoading" data-i18n-title="status3Tip" title="伺服器狀態（約每 5 秒更新）">伺服器：…</div>
       </div>
       <div id="browser" class="box">
-        <button id="browser-toggle" class="toggle" type="button" aria-expanded="true">選擇檔案</button>
+        <button id="browser-toggle" class="toggle" type="button" aria-expanded="true" data-i18n="browser">選擇檔案</button>
         <div id="browser-body">
           <div>
-            <input id="path" type="text" spellcheck="false" placeholder="貼上路徑後按 Enter（/ 或 \ 皆可）" />
-            <input id="jaw-re" type="text" spellcheck="false" value="upper;_u_;u\d+-;ur" placeholder="upper 的 regex，; 分隔" />
+            <input id="path" type="text" spellcheck="false" data-i18n-placeholder="pathPh" placeholder="貼上路徑後按 Enter（/ 或 \ 皆可）" />
+            <input id="jaw-re" type="text" spellcheck="false" value="upper;_u_;u\d+-;ur" data-i18n-placeholder="jawRePh" placeholder="upper 的 regex，; 分隔" />
           </div>
-          <div class="hint">Ctrl/⌘ 點擊加選、Shift 點擊範圍選取</div>
+          <div class="hint" data-i18n="selectHint">Ctrl/⌘ 點擊加選、Shift 點擊範圍選取</div>
           <ul id="files"></ul>
           <div id="info"></div>
         </div>
@@ -52,19 +53,19 @@
       <div id="busy" class="box" hidden>
         <span class="spinner"></span>
         <span id="busy-text"></span>
-        <button id="busy-cancel" type="button">取消</button>
+        <button id="busy-cancel" type="button" data-i18n="cancel">取消</button>
       </div>
     </div>
     <div id="versions" hidden>
-      <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> 細節</label><button id="versions-close" type="button">✕</button></div>
+      <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> <span data-i18n="details">細節</span></label><button id="versions-close" type="button">✕</button></div>
       <div id="versions-body"></div>
     </div>
     <div id="assoc" hidden>
-      <div class="dlg-head"><b>預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>
+      <div class="dlg-head"><b data-i18n="assocTitle">預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>
       <div id="assoc-body"></div>
     </div>
     <div id="update" hidden>
-      <div class="dlg-head"><b>更新 lobj-view</b><button id="update-close" type="button">✕</button></div>
+      <div class="dlg-head"><b data-i18n="updateTitle">更新 lobj-view</b><button id="update-close" type="button">✕</button></div>
       <div id="update-body"></div>
     </div>
     <aside id="panel">

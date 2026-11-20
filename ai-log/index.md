@@ -56,3 +56,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: jaw, badge, systemGreen, systemRed, jawConflict, isJawFile, stl, ply, obj, 1.8.7, 1.8.11, jawFromLabels, lobj2, labelJaw
 - [2026/s4/261120e_local_unrestricted_hud_resize_v1102.md](2026/s4/261120e_local_unrestricted_hud_resize_v1102.md) — 1.10.1: on localhost the browser/open/convert are no longer confined to `--dir` (absolute paths, `up` field); 1.10.2: left HUD width draggable, content wraps.
   Keywords: unrestricted, local_only, resolve_ex, list_dir_ex, virt_of, parent_virt, up, --hud-w, hud-resize, localStorage, flex-wrap, Cargo.lock httparse, 1.10.1, 1.10.2
+- [2026/s4/261120f_i18n_lang_v1103.md](2026/s4/261120f_i18n_lang_v1103.md) — 1.10.3: multilingual UI — `web/src/i18n.ts` dictionaries (zh default, en), `data-i18n*` attributes on static HTML, live re-render via `onLangChange`; status-bar button always labelled `lang` opens a language menu; choice saved in localStorage.
+  Keywords: i18n, lang, lang-btn, lang-menu, t(), Dict, applyStatic, onLangChange, setLang, data-i18n, localStorage lobj-view-lang, English, Vietnamese, 1.10.3
