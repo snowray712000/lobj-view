@@ -13,6 +13,7 @@
 //!   新檔沿用舊檔的建立 / 修改 / 存取時間，可選擇刪除舊檔（見 `convert`）。
 //!
 //! 所有路徑都會 canonicalize 後確認仍在 `--dir` 之內（含 `..`、符號連結），超出一律拒絕。
+//! 例外：伺服器只監聽本機位址（localhost）時不限制，可瀏覽整台電腦；`--dir` 之外的路徑以絕對路徑（`/` 分隔）表示。
 //!
 //! `.zip` 檔視為資料夾（`dirs` 內包含它，並在 `zips` 標出）：第一次進入時由 `zipfs` 解壓到快取，
 //! 原 zip 不動；路徑可以穿過 zip（`a.zip/sub/x.stl`），內層 zip 也可以。解壓期間若前端中斷連線
@@ -126,6 +127,39 @@ struct Resolved {
     real: PathBuf,
     virt: String,
     base: PathBuf,
+    /// 是否位於 zip 解壓快取內（zip 內的檔案不能轉檔）
+    in_zip: bool,
+}
+
+/// 前端看到的路徑：在 `root` 之內是相對路徑，否則（只有不限制範圍時才會發生）是絕對路徑，一律 `/` 分隔。
+fn virt_of(root: &Path, real: &Path) -> String {
+    if real.starts_with(root) {
+        return rel_string(root, real);
+    }
+    let s = real.to_string_lossy().replace('\\', "/");
+    if let Some(r) = s.strip_prefix("//?/UNC/") {
+        format!("//{r}")
+    } else if let Some(r) = s.strip_prefix("//?/") {
+        r.to_string()
+    } else {
+        s
+    }
+}
+
+/// 前端路徑的上一層（純字串）；已是檔案系統根目錄則為 `None`。相對路徑的最上層回傳 `Some("")`。
+fn parent_virt(virt: &str) -> Option<String> {
+    if virt.is_empty() {
+        return None;
+    }
+    if Path::new(virt).is_absolute() && Path::new(virt).parent().is_none() {
+        return None;
+    }
+    Some(match virt.trim_end_matches('/').rfind('/') {
+        None => String::new(),
+        Some(0) => "/".into(),
+        Some(i) if virt[..i].ends_with(':') => format!("{}/", &virt[..i]),
+        Some(i) => virt[..i].to_string(),
+    })
 }
 
 fn virt_join(a: &str, rel: &Path) -> String {
@@ -170,7 +204,7 @@ fn descend(mut zip_real: PathBuf, mut zip_virt: String, mut inner: PathBuf, canc
                 return Err(err(StatusCode::FORBIDDEN, "路徑不可超出 zip"));
             }
             let virt = virt_join(&zip_virt, &inner);
-            return Ok(Resolved { real, virt, base });
+            return Ok(Resolved { real, virt, base, in_zip: true });
         }
         // 內層 zip？
         let mut next = None;
@@ -192,7 +226,13 @@ fn descend(mut zip_real: PathBuf, mut zip_virt: String, mut inner: PathBuf, canc
 }
 
 /// 把使用者輸入的路徑（`/` 或 `\`、相對或絕對）解析成 `root` 之內（或 zip 之內）的真實路徑。
+#[cfg(test)]
 fn resolve(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Resolved, ApiErr> {
+    resolve_ex(root, input, cancel, false)
+}
+
+/// `unrestricted`：不限制在 `root` 內（伺服器只監聽本機位址時）。
+fn resolve_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool) -> Result<Resolved, ApiErr> {
     let s = input.trim().trim_matches('"').replace('\\', "/");
     let rel = s.trim_start_matches('/');
     let mut candidates = Vec::new();
@@ -204,9 +244,13 @@ fn resolve(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Resolved, Ap
     let mut outside = false;
     for c in candidates {
         if let Ok(real) = std::fs::canonicalize(&c) {
+            if unrestricted {
+                let virt = virt_of(root, &real);
+                return Ok(Resolved { real, virt, base: PathBuf::new(), in_zip: false });
+            }
             if real.starts_with(root) {
                 let virt = rel_string(root, &real);
-                return Ok(Resolved { real, virt, base: root.to_path_buf() });
+                return Ok(Resolved { real, virt, base: root.to_path_buf(), in_zip: false });
             }
             outside = true;
             continue;
@@ -218,12 +262,12 @@ fn resolve(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Resolved, Ap
                 continue;
             }
             let Ok(zr) = std::fs::canonicalize(anc) else { continue };
-            if !zr.starts_with(root) {
+            if !unrestricted && !zr.starts_with(root) {
                 outside = true;
                 break;
             }
             let inner = n.strip_prefix(anc).unwrap_or(Path::new("")).to_path_buf();
-            let zv = rel_string(root, &zr);
+            let zv = virt_of(root, &zr);
             return descend(zr, zv, inner, cancel);
         }
     }
@@ -254,10 +298,17 @@ struct Listing {
     zips: Vec<String>,
     files: Vec<(String, u64)>,
     selected: Option<String>,
+    /// 「..」要去的路徑；`None` 表示沒有上一層
+    up: Option<String>,
 }
 
+#[cfg(test)]
 fn list_dir(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Listing, ApiErr> {
-    let mut r = resolve(root, input, cancel)?;
+    list_dir_ex(root, input, cancel, false)
+}
+
+fn list_dir_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool) -> Result<Listing, ApiErr> {
+    let mut r = resolve_ex(root, input, cancel, unrestricted)?;
     let fname = r.real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if r.real.is_file() && zipfs::is_zip_name(&fname) {
         // 指到 .zip 本身 → 當成資料夾進入
@@ -267,7 +318,7 @@ fn list_dir(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Listing, Ap
         if !is_lobj_name(&fname) {
             return Err(err(StatusCode::BAD_REQUEST, "不是 .lobj / .lobj2 / .stl / .obj / .ply 檔"));
         }
-        let pv = r.virt.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
+        let pv = parent_virt(&r.virt).unwrap_or_default();
         (r.real.parent().unwrap_or(&r.base).to_path_buf(), pv, Some(fname))
     } else {
         (r.real.clone(), r.virt.clone(), None)
@@ -295,16 +346,23 @@ fn list_dir(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Listing, Ap
     }
     dirs.sort_by_key(|n| n.to_lowercase());
     files.sort_by_key(|(n, _)| n.to_lowercase());
-    Ok(Listing { path: dir_virt, dirs, zips, files, selected })
+    // 本機模式下，--dir 的最上層也能再往上（到磁碟上的上一層）
+    let up = match parent_virt(&dir_virt) {
+        Some(u) => Some(u),
+        None if unrestricted && !r.in_zip => dir.parent().map(|p| virt_of(root, p)),
+        None => None,
+    };
+    Ok(Listing { path: dir_virt, dirs, zips, files, selected, up })
 }
 
 async fn list(State(shared): State<Arc<Shared>>, Query(q): Query<HashMap<String, String>>) -> Response {
     let root = shared.root();
+    let unrestricted = shared.local_only();
     let input = q.get("path").cloned().unwrap_or_default();
     // 前端中斷連線時這個 future 會被丟棄，guard 隨之讓背景的解壓停下來
     let cancel = Arc::new(AtomicBool::new(false));
     let _guard = CancelOnDrop(cancel.clone());
-    match tokio::task::spawn_blocking(move || list_dir(&root, &input, &cancel)).await {
+    match tokio::task::spawn_blocking(move || list_dir_ex(&root, &input, &cancel, unrestricted)).await {
         Ok(Ok(l)) => {
             let names = |v: &[String]| v.iter().map(|d| json_string(d)).collect::<Vec<_>>().join(",");
             let (dirs, zips) = (names(&l.dirs), names(&l.zips));
@@ -318,9 +376,10 @@ async fn list(State(shared): State<Arc<Shared>>, Query(q): Query<HashMap<String,
             (
                 [(header::CONTENT_TYPE, "application/json")],
                 format!(
-                    "{{\"path\":{},\"parent\":{},\"dirs\":[{dirs}],\"zips\":[{zips}],\"files\":[{files}],\"selected\":{selected}}}",
+                    "{{\"path\":{},\"parent\":{},\"up\":{},\"dirs\":[{dirs}],\"zips\":[{zips}],\"files\":[{files}],\"selected\":{selected}}}",
                     json_string(&l.path),
-                    !l.path.is_empty()
+                    l.up.is_some(),
+                    l.up.as_deref().map(json_string).unwrap_or_else(|| "null".into())
                 ),
             )
                 .into_response()
@@ -345,11 +404,12 @@ async fn fetch(
         None => None,
     };
     let root = shared.root();
+    let unrestricted = shared.local_only();
     let cancel = Arc::new(AtomicBool::new(false));
     let _guard = CancelOnDrop(cancel.clone());
     // 路徑可能穿過 .zip（需要解壓），所以解析也在背景執行緒做
     let job = move || -> Result<Result<(Vec<u8>, bool), LobjError>, ApiErr> {
-        let r = resolve(&root, &name, &cancel)?;
+        let r = resolve_ex(&root, &name, &cancel, unrestricted)?;
         if !r.real.is_file() {
             return Err(err(StatusCode::BAD_REQUEST, "不是檔案"));
         }
@@ -414,10 +474,11 @@ async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
     };
     let delete_old = body.get("delete_old").and_then(|v| v.as_bool()).unwrap_or(false);
     let root = shared.root();
+    let unrestricted = shared.local_only();
     let job = move || -> Result<String, (StatusCode, String)> {
         let bad = |c: StatusCode, m: &str| (c, m.to_string());
-        let r = resolve(&root, &path, &AtomicBool::new(false)).map_err(|(c, m)| (c, m.to_string()))?;
-        if r.base != root {
+        let r = resolve_ex(&root, &path, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.in_zip {
             return Err(bad(StatusCode::BAD_REQUEST, "zip 內的檔案不能轉檔（請先解壓縮）"));
         }
         let ext = r.real.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -447,7 +508,7 @@ async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
         if delete_old {
             std::fs::remove_file(&r.real).map_err(io)?;
         }
-        Ok(rel_string(&root, &new))
+        Ok(virt_of(&root, &new))
     };
     match tokio::task::spawn_blocking(job).await {
         Ok(Ok(new_path)) => (
@@ -519,6 +580,26 @@ mod tests {
         assert!(resolve(&root, base.to_str().unwrap(), &no()).is_err());
         let l = list_dir(&root, "sub/a.lobj", &no()).unwrap();
         assert_eq!((l.path.as_str(), l.selected.as_deref()), ("sub", Some("a.lobj")));
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn unrestricted_local() {
+        let base = std::env::temp_dir().join(format!("lobj_view_unres_{}", std::process::id()));
+        let root = base.join("root");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(base.join("out.lobj"), b"x").unwrap();
+        let root = std::fs::canonicalize(&root).unwrap();
+        let l = list_dir_ex(&root, "", &no(), true).unwrap();
+        assert!(l.up.is_some());
+        let up = l.up.unwrap();
+        let l = list_dir_ex(&root, &up, &no(), true).unwrap();
+        assert!(l.files.iter().any(|f| f.0 == "out.lobj"));
+        assert!(l.dirs.contains(&"root".to_string()));
+        assert!(resolve_ex(&root, "../out.lobj", &no(), true).is_ok());
+        assert!(resolve_ex(&root, "../out.lobj", &no(), false).is_err());
+        assert_eq!(parent_virt("D:/a"), Some("D:/".into()));
+        assert_eq!(parent_virt("a"), Some(String::new()));
         std::fs::remove_dir_all(&base).ok();
     }
 

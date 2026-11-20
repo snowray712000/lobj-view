@@ -841,7 +841,7 @@ let curDir = '';
 let lastClicked = ''; // shift 範圍選取的起點
 let curFiles: string[] = []; // 目前資料夾內的檔案完整路徑（依清單順序）
 
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+const join = (dir: string, name: string) => (dir ? `${dir.endsWith('/') ? dir : `${dir}/`}${name}` : name);
 
 function addItem(text: string, cls: string, onClick: (e: MouseEvent) => void): HTMLLIElement {
   const li = document.createElement('li');
@@ -931,10 +931,10 @@ async function browse(path: string): Promise<void> {
   try {
     const l = await withBusy(path, (signal) => listLobj(path, signal), mine);
     curDir = l.path;
-    pathEl.value = l.path ? `${l.path}/` : '';
+    pathEl.value = l.path ? (l.path.endsWith('/') ? l.path : `${l.path}/`) : '';
     filesEl.replaceChildren();
     if (l.parent) {
-      const up = curDir.includes('/') ? curDir.slice(0, curDir.lastIndexOf('/')) : '';
+      const up = l.up ?? (curDir.includes('/') ? curDir.slice(0, curDir.lastIndexOf('/')) : '');
       addItem('📁 ..', 'dir', () => void browse(up));
     }
     const zips = new Set(l.zips ?? []);

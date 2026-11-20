@@ -91,6 +91,8 @@ export interface LobjListing {
   path: string;
   /** 是否有上一層 */
   parent: boolean;
+  /** 「..」要去的路徑（本機模式下可超出 --dir，為絕對路徑）；沒有上一層為 null */
+  up?: string | null;
   dirs: string[];
   /** dirs 之中其實是 .zip 檔的名稱（後端偷偷解壓，看起來像資料夾） */
   zips: string[];
