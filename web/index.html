@@ -42,6 +42,7 @@
         <button id="browser-toggle" class="toggle" type="button" aria-expanded="true" data-i18n="browser">選擇檔案</button>
         <div id="browser-body">
           <div>
+            <button id="picker-open" type="button" data-i18n="pickerBtn" data-i18n-title="pickerBtnTip" title="開啟資料夾選擇對話框">瀏覽…</button>
             <input id="path" type="text" spellcheck="false" data-i18n-placeholder="pathPh" placeholder="貼上路徑後按 Enter（/ 或 \ 皆可）" />
             <input id="jaw-re" type="text" spellcheck="false" value="upper;_u_;u\d+-;ur" data-i18n-placeholder="jawRePh" placeholder="upper 的 regex，; 分隔" />
           </div>
@@ -54,6 +55,24 @@
         <span class="spinner"></span>
         <span id="busy-text"></span>
         <button id="busy-cancel" type="button" data-i18n="cancel">取消</button>
+      </div>
+    </div>
+    <div id="picker" hidden>
+      <div class="dlg-head"><b data-i18n="pickerTitle">選擇資料夾與檔案</b><label class="pk-alpha" data-i18n-title="pickerAlphaTip" title="背景透明度（越左越透明，可看到後面主畫面的變化）">◐ <input id="picker-alpha" type="range" min="0.3" max="1" step="0.05" value="0.85" /></label><button id="picker-close" type="button">✕</button></div>
+      <div id="picker-body">
+        <div id="picker-side"></div>
+        <div id="picker-main">
+          <div id="picker-bar">
+            <input id="picker-path" type="text" spellcheck="false" />
+            <button id="picker-pin" type="button">📍</button>
+          </div>
+          <ul id="picker-list"></ul>
+          <div id="picker-info" class="hint"></div>
+        </div>
+      </div>
+      <div id="picker-foot">
+        <span class="hint" data-i18n="pickerHint">點擊加入選取</span>
+        <button id="picker-do-open" type="button" data-i18n="pickerOpen" data-i18n-title="pickerOpenTip" title="主畫面切換到這個資料夾">開啟</button>
       </div>
     </div>
     <div id="versions" hidden>

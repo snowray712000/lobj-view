@@ -691,3 +691,142 @@ body {
   opacity: 0;
   pointer-events: none;
 }
+
+/* --- 資料夾選擇對話框（非遮蔽式浮動面板） --- */
+#picker {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 32px));
+  height: min(480px, calc(100vh - 96px));
+  box-sizing: border-box; /* 記住的寬高（offsetWidth）還原時才不會每次多出邊框 */
+  min-width: 420px;
+  min-height: 240px;
+  max-width: 100vw;
+  max-height: 100vh;
+  resize: both; /* 右下角可拖曳改大小 */
+  overflow: hidden;
+  --pk-alpha: 0.85;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--secondarySystemBackground) calc(var(--pk-alpha) * 100%), transparent);
+  color: var(--label);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgb(0 0 0 / 0.5);
+}
+#picker[hidden] {
+  display: none;
+}
+#picker .dlg-head {
+  cursor: move;
+  user-select: none;
+}
+#picker-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+#picker-side {
+  flex: 0 0 11em;
+  overflow-y: auto;
+  border-right: 1px solid var(--separator);
+  padding: 4px 0;
+}
+#picker-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+}
+#picker-bar {
+  display: flex;
+  gap: 4px;
+}
+#picker-path {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+#picker-list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  overflow: auto;
+}
+#picker-list li {
+  padding: 1px 6px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#picker-list li:hover {
+  background: var(--hover-bg, var(--tertiarySystemFill));
+}
+#picker-list li.dir {
+  color: var(--link);
+}
+#picker-list li.sel {
+  background: color-mix(in srgb, var(--systemBlue) 30%, transparent);
+}
+.pk-sec {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  color: var(--secondaryLabel);
+}
+.pk-item {
+  display: flex;
+  align-items: center;
+  padding: 1px 4px 1px 8px;
+}
+.pk-item:hover {
+  background: var(--hover-bg, var(--tertiarySystemFill));
+}
+.pk-item.cur {
+  background: color-mix(in srgb, var(--systemBlue) 25%, transparent);
+}
+.pk-name {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-item button {
+  all: unset;
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 11px;
+  opacity: 0;
+}
+.pk-item:hover button {
+  opacity: 0.8;
+}
+#picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--separator);
+}
+
+.pk-alpha {
+  margin-left: auto;
+  margin-right: 10px;
+  font-size: 0.9em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pk-alpha input {
+  width: 6em;
+  vertical-align: middle;
+}

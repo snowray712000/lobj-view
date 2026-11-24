@@ -9,6 +9,9 @@
 //!     - labels 一律是 **FDI**（舊 `.lobj` 會在後端先換算，所以前端不需要知道 arch_index）；
 //!     - 檔案沒有 colors 時，由後端依 labels 補上（`Palette::Unique`），調色盤只在 Rust 維護一份。
 //!
+//! - `GET /api/places`：資料夾選擇對話框左側的「常用位置」
+//!   （JSON：`[{ kind, name, path }]`；`kind` 為 root / home / desktop / documents / downloads / drive）。
+//!   只監聽本機位址時才列出家目錄、桌面、文件、下載與磁碟機；否則只有 `--dir` 本身。
 //! - `POST /api/lobj-convert`（只限本機、需 `X-Lobj-Requested`）：把舊 `.lobj` 依指定的 jaw 轉存成同資料夾的 `.lobj2`，
 //!   新檔沿用舊檔的建立 / 修改 / 存取時間，可選擇刪除舊檔（見 `convert`）。
 //!
@@ -50,6 +53,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
         .route("/api/lobj-convert", post(convert))
+        .route("/api/places", get(places))
         .route("/api/events", get(events))
         .route("/api/stats", get(stats))
         .with_state(shared)
@@ -91,6 +95,47 @@ async fn stats(State(shared): State<Arc<Shared>>) -> Response {
         ),
     )
         .into_response()
+}
+
+/// 常用位置：`--dir` 一定有；本機模式再加上使用者資料夾與（Windows）磁碟機。路徑格式同 `list` 的 `path`。
+fn places_for(root: &Path, unrestricted: bool) -> Vec<(&'static str, String, String)> {
+    let mut v = vec![("root", String::new(), String::new())];
+    if !unrestricted {
+        return v;
+    }
+    let known: [(&'static str, Option<PathBuf>); 4] = [
+        ("home", dirs::home_dir()),
+        ("desktop", dirs::desktop_dir()),
+        ("documents", dirs::document_dir()),
+        ("downloads", dirs::download_dir()),
+    ];
+    for (kind, p) in known {
+        if let Some(real) = p.and_then(|p| std::fs::canonicalize(p).ok()) {
+            if real.is_dir() {
+                v.push((kind, String::new(), virt_of(root, &real)));
+            }
+        }
+    }
+    #[cfg(windows)]
+    for c in b'A'..=b'Z' {
+        let drive = format!("{}:/", c as char);
+        if Path::new(&drive).exists() {
+            v.push(("drive", format!("{}:", c as char), drive));
+        }
+    }
+    v
+}
+
+async fn places(State(shared): State<Arc<Shared>>) -> Response {
+    let root = shared.root();
+    let unrestricted = shared.local_only();
+    let list = tokio::task::spawn_blocking(move || places_for(&root, unrestricted)).await.unwrap_or_default();
+    let body = list
+        .iter()
+        .map(|(k, n, p)| format!("{{\"kind\":{},\"name\":{},\"path\":{}}}", json_string(k), json_string(n), json_string(p)))
+        .collect::<Vec<_>>()
+        .join(",");
+    ([(header::CONTENT_TYPE, "application/json")], format!("[{body}]")).into_response()
 }
 
 pub fn is_lobj_name(name: &str) -> bool {

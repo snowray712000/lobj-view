@@ -1,3 +1,4 @@
+import { initPicker, recordRecent } from './picker';
 import './apple-color-ios.css';
 import './style.css';
 import * as THREE from 'three/webgpu';
@@ -1069,6 +1070,19 @@ async function withBusy<T>(path: string, run: (signal: AbortSignal) => Promise<T
   }
 }
 
+initPicker({
+  selected,
+  applySelection: () => {
+    markSelected();
+    void syncSelection();
+  },
+  openOnly,
+  browse,
+  getCurDir: () => curDir,
+  withBusy,
+  isAbort,
+});
+
 document.getElementById('busy-cancel')!.addEventListener('click', () => {
   for (const j of busyJobs.values()) j.ctl.abort();
 });
@@ -1082,6 +1096,7 @@ async function browse(path: string): Promise<void> {
   try {
     const l = await withBusy(path, (signal) => listLobj(path, signal), mine);
     curDir = l.path;
+    recordRecent(curDir);
     pathEl.value = l.path ? (l.path.endsWith('/') ? l.path : `${l.path}/`) : '';
     filesEl.replaceChildren();
     if (l.parent) {
