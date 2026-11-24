@@ -375,7 +375,7 @@ panelToggleEl.addEventListener('click', () => {
 });
 
 /** 共同設定：alpha / wire / normal / curv / color 對所有物件一起生效（沒有 label 的模型，color 為「原色」時各自用自動配的顏色）。 */
-const common: ObjProps = defaultProps();
+// 右側設定面板只改「作用中物件」的屬性（getProps(activeFile())），不影響其他物件。
 /** 隱藏（h）與單獨（s）的檔案；取消選取後仍保留。 */
 const hiddenSet = new Set<string>();
 const soloSet = new Set<string>();
@@ -384,9 +384,8 @@ const hasSolo = () => [...selected].some((f) => soloSet.has(f));
 /** 某檔案實際套用的屬性：共同設定 + 各檔自己的自動色 + solo 對 alpha 的調整（有 solo 時，非 solo 的 alpha 最高 0.5）。 */
 function effProps(f: string): ObjProps {
   const own = getProps(f);
-  const useOwn = common.color === null;
-  const alpha = hasSolo() && !soloSet.has(f) ? Math.min(common.alpha, 0.5) : common.alpha;
-  return { ...common, alpha, color: useOwn ? own.color : common.color, mix: useOwn ? own.mix : common.mix };
+  const alpha = hasSolo() && !soloSet.has(f) ? Math.min(own.alpha, 0.5) : own.alpha;
+  return { ...own, alpha };
 }
 
 function updateProps(f: string): void {
@@ -540,7 +539,9 @@ function buildDetail(card: HTMLElement): void {
 }
 
 function buildSettings(): HTMLElement {
-  const p = common;
+  const af = activeFile();
+  const p = af ? getProps(af) : defaultProps(); // 沒有選取時只是個不連動任何物件的空設定
+  const updateAll = (): void => (af ? updateProps(af) : undefined); // 只更新作用中物件
   const card = document.createElement('div');
   card.className = 'card settings';
   buildDetail(card);
@@ -849,7 +850,7 @@ const fmtK = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 
 /** 曲率色階圖例：色條 + 兩端（signed 時含中間 0）的 κ 值；κ 單位為 1/模型單位，括號內為對應曲率半徑。 */
 function renderLegend(el: HTMLElement): void {
   const f = el.dataset.path!;
-  const p = common;
+  const p = getProps(f);
   const l = loaded.get(f);
   el.replaceChildren();
   if (!p.curv) return;
