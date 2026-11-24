@@ -1004,22 +1004,28 @@ function markSelected(): void {
   }
 }
 
-/** 點檔案：一般點擊＝只選這個；Ctrl/⌘＝加選或取消；Shift＝從上次點的到這個。 */
+/** 點檔案：一般點擊／Ctrl/⌘＝加選或取消（保留原本已載入的）；Shift＝從上次點的到這個。雙擊＝只開這個（見 openOnly）。 */
 function clickFile(full: string, e: MouseEvent): void {
+  if (e.detail > 1) return; // 雙擊的第二下交給 dblclick（openOnly）處理，不要再切換一次
   const additive = e.ctrlKey || e.metaKey;
   if (e.shiftKey && curFiles.includes(lastClicked)) {
     const a = curFiles.indexOf(lastClicked);
     const b = curFiles.indexOf(full);
     if (!additive) selected.clear();
     for (const f of curFiles.slice(Math.min(a, b), Math.max(a, b) + 1)) selected.add(f);
-  } else if (additive) {
+  } else {
     if (!selected.delete(full)) selected.add(full);
     lastClicked = full;
-  } else {
-    selected.clear();
-    selected.add(full);
-    lastClicked = full;
   }
+  markSelected();
+  void syncSelection();
+}
+
+/** 雙擊檔案：清掉其他已選的，只開這一個（舊版的一般點擊行為）。 */
+function openOnly(full: string): void {
+  selected.clear();
+  selected.add(full);
+  lastClicked = full;
   markSelected();
   void syncSelection();
 }
@@ -1089,6 +1095,7 @@ async function browse(path: string): Promise<void> {
       const full = join(curDir, f.name);
       const li = addItem(`${f.name} (${(f.size / 1048576).toFixed(1)} MB)`, '', (e) => clickFile(full, e));
       li.dataset.path = full;
+      li.addEventListener('dblclick', () => openOnly(full));
       const badge = document.createElement('span');
       badge.className = 'jaw-badge';
       li.prepend(badge);
