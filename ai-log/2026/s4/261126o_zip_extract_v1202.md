@@ -1,6 +1,6 @@
-# 1.19.3: unzip button for a selected .zip
+# 1.20.2: unzip button for a selected .zip
 
-Date: 2026-11-26. Project: `lobj-view`. Version 1.19.3. Follows [261126n](261126n_admin_flag_v1192.md).
+Date: 2026-11-26. Project: `lobj-view`. Version 1.20.2. Follows [261126n](261126n_admin_flag_v1201.md).
 
 ## User request
 A selected .zip also gets an extract (解壓縮) button.

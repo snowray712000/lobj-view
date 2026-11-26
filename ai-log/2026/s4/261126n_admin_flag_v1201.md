@@ -1,6 +1,6 @@
-# 1.19.2: --admin flag
+# 1.20.1: --admin flag
 
-Date: 2026-11-26. Project: `lobj-view`. Version 1.19.2. Follows [261126m](261126m_stat_download_v1183.md).
+Date: 2026-11-26. Project: `lobj-view`. Version 1.20.1. Follows [261126m](261126m_stat_download_v1183.md).
 
 ## User request
 With `--admin` (e.g. on 0.0.0.0), allow the operations that were local-only: auto update, compress, sync, delete.
