@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.16.2
+- 新功能: 獨立的批次轉檔頁 `/to-lobj2`（不整合進檢視器主畫面）：瀏覽資料夾、列出 .lobj 與偵測到的上 / 下顎（檔名判斷不出的可手動指定）、勾選後逐一轉成 .lobj2，有進度列；可選轉換成功後刪除原檔，已有 .lobj2 的會標示並略過
+- 工程師筆記: 純靜態頁 `web/public/to-lobj2.html`（vanilla JS，不經 Vite bundle），沿用 `/api/lobj` 與 `/api/lobj-convert`；`static_handler` 把 `/to-lobj2` 對到該檔；轉檔 API 仍限本機。瀏覽器畫面尚未實機點過，只驗證了頁面可取得與轉檔 API #static-page
+
 ### 1.16.1
 - 新功能: 命令列 `lobj-view convert-dir <資料夾>`：把資料夾（含子資料夾）下所有檔名明確含 upper / lower 的 `.lobj` 批次轉成同名 `.lobj2`（保留原檔時間、寫出後讀回驗證）；檔名無法判斷上下顎或 `.lobj2` 已存在的會略過並列出，預設保留原 `.lobj`，加 `--delete-old` 才刪，`--dry-run` 只預覽
 - 工程師筆記: 單檔轉換由 `/api/lobj-convert` 抽出成 `lobj_api::convert_real` 共用，批次邏輯在 `src/convert_dir.rs`；以 `/home/shared/訓練原始資料/sets_141`（434 個 .lobj，約 39 秒 debug 建置）試作，全數成功 #cli #batch-convert

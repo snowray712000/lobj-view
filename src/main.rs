@@ -407,7 +407,12 @@ fn print_urls(addr: SocketAddr, tls: Option<&tls::Material>) {
 
 async fn static_handler(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
+    // 獨立的批次轉檔頁（web/public/to-lobj2.html），不屬於主程式 SPA
+    let path = match path {
+        "" => "index.html",
+        "to-lobj2" | "to-lobj2/" => "to-lobj2.html",
+        p => p,
+    };
 
     if let Some(file) = Assets::get(path) {
         return serve_file(path, file);

@@ -78,3 +78,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: tmux, new-session, has-session, kill-session, sync-jobs, sync-job-stop, start_bg, run.sh, tee, status, rc, askpass.sh, pass 0600, parse_progress, loadJobs, 1.14.4
 - [2026/s4/261126f_convert_dir_cli_v1161.md](2026/s4/261126f_convert_dir_cli_v1161.md) — 1.16.1: `lobj-view convert-dir` batch-converts upper/lower-named .lobj to .lobj2 (recursive, keep-old default, --dry-run/--delete-old); shared `convert_real`; trial on sets_141 converted 434/434.
   Keywords: convert-dir, convert_real, batch convert, lobj2, guess_from_path, sets_141, 1.16.1
+- [2026/s4/261126g_to_lobj2_page_v1162.md](2026/s4/261126g_to_lobj2_page_v1162.md) — 1.16.2: standalone `/to-lobj2` page (static HTML, not part of the viewer SPA) for browsing a folder and batch-converting .lobj → .lobj2 via existing APIs.
+  Keywords: to-lobj2, web/public, static_handler, lobj-convert, batch UI, 1.16.2
