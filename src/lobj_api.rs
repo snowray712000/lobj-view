@@ -12,6 +12,8 @@
 //! - `GET /api/places`：資料夾選擇對話框左側的「常用位置」
 //!   （JSON：`[{ kind, name, path }]`；`kind` 為 root / home / desktop / documents / downloads / drive）。
 //!   只監聽本機位址時才列出家目錄、桌面、文件、下載與磁碟機；否則只有 `--dir` 本身。
+//! - `POST /api/zip-dir`（只限本機、需 `X-Lobj-Requested`）：把資料夾（含子資料夾）壓成與它同層的 `<資料夾名>.zip`，
+//!   用來把整個資料夾傳到另一台電腦（見 `zip_dir`）。zip 內的路徑不能壓縮。
 //! - `POST /api/lobj-convert`（只限本機、需 `X-Lobj-Requested`）：把舊 `.lobj` 依指定的 jaw 轉存成同資料夾的 `.lobj2`，
 //!   新檔沿用舊檔的建立 / 修改 / 存取時間，可選擇刪除舊檔（見 `convert`）。
 //!
@@ -53,6 +55,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
         .route("/api/lobj-convert", post(convert))
+        .route("/api/zip-dir", post(zip_dir))
         .route("/api/places", get(places))
         .route("/api/events", get(events))
         .route("/api/stats", get(stats))
@@ -709,5 +712,94 @@ mod tests {
         assert!(is_lobj_name("x.OBJ"));
         assert!(is_lobj_name("x.ply"));
         assert!(!is_lobj_name("x.txt"));
+    }
+}
+
+
+/// 遞迴把 `dir` 寫進 zip，entry 名稱是相對 `base` 的 `/` 路徑（含最上層資料夾名）；略過符號連結。
+fn zip_add_dir<W: std::io::Write + std::io::Seek>(
+    zw: &mut zip::ZipWriter<W>,
+    base: &Path,
+    dir: &Path,
+    opt: zip::write::SimpleFileOptions,
+    count: &mut usize,
+) -> anyhow::Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(Result::ok).collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let path = e.path();
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        let name = path.strip_prefix(base)?.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+        if ft.is_dir() {
+            zw.add_directory(format!("{name}/"), opt)?;
+            zip_add_dir(zw, base, &path, opt, count)?;
+        } else if ft.is_file() {
+            // 檔案被占用 / 無權限就略過，不讓整包失敗
+            let Ok(mut f) = std::fs::File::open(&path) else { continue };
+            zw.start_file(name, opt.large_file(e.metadata().map(|m| m.len() > u32::MAX as u64).unwrap_or(false)))?;
+            std::io::copy(&mut f, zw)?;
+            *count += 1;
+        }
+    }
+    Ok(())
+}
+
+const ZIP_REMOTE_MSG: &str = "壓縮會在伺服器上寫入檔案，只在伺服器監聽本機位址時開放";
+
+/// 把資料夾壓成與它同層的 `<資料夾名>.zip`（用來傳到別台電腦）。body：`{ "path": 資料夾, "overwrite": bool }`。
+/// 先寫 `.partial` 完成才改名；同名檔已存在且未指定 overwrite 回 409。回傳 `{ zip_path, size, files }`（zip_path 是磁碟上的絕對路徑）。
+async fn zip_dir(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, ZIP_REMOTE_MSG) {
+        return e.into_response();
+    }
+    let input = body.get("path").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+    let root = shared.root();
+    let unrestricted = shared.local_only();
+    let job = move || -> Result<(PathBuf, u64, usize), (StatusCode, String)> {
+        let r = resolve_ex(&root, &input, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.in_zip {
+            return Err((StatusCode::BAD_REQUEST, "zip 內的資料夾不能壓縮".into()));
+        }
+        if !r.real.is_dir() {
+            return Err((StatusCode::BAD_REQUEST, "不是資料夾".into()));
+        }
+        let (Some(name), Some(base)) = (r.real.file_name().map(|n| n.to_string_lossy().into_owned()), r.real.parent()) else {
+            return Err((StatusCode::BAD_REQUEST, "根目錄無法壓縮（沒有上一層可放 zip）".into()));
+        };
+        let out = base.join(format!("{name}.zip"));
+        if out.exists() && !overwrite {
+            return Err((StatusCode::CONFLICT, format!("{} 已存在", out.display())));
+        }
+        let tmp = base.join(format!("{name}.zip.partial"));
+        let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+        let fail = |e: anyhow::Error| {
+            std::fs::remove_file(&tmp).ok();
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        };
+        let file = std::fs::File::create(&tmp).map_err(io)?;
+        let mut zw = zip::ZipWriter::new(std::io::BufWriter::new(file));
+        let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zw.add_directory(format!("{name}/"), opt).map_err(|e| fail(e.into()))?;
+        let mut count = 0usize;
+        zip_add_dir(&mut zw, base, &r.real, opt, &mut count).map_err(fail)?;
+        zw.finish().map_err(|e| fail(e.into()))?;
+        std::fs::rename(&tmp, &out).map_err(|e| {
+            std::fs::remove_file(&tmp).ok();
+            io(e)
+        })?;
+        Ok((out.clone(), std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0), count))
+    };
+    match tokio::task::spawn_blocking(job).await {
+        Ok(Ok((p, size, files))) => (
+            [(header::CONTENT_TYPE, "application/json")],
+            format!("{{\"zip_path\":{},\"size\":{size},\"files\":{files}}}", json_string(&p.to_string_lossy())),
+        )
+            .into_response(),
+        Ok(Err((c, m))) => (c, m).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

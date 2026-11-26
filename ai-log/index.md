@@ -68,3 +68,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: clickFile, openOnly, dblclick, e.detail, selectHint, toggle select, rust-embed, web/dist rebuild, 1.12.2
 - [2026/s4/261124b_folder_picker_dialog_v1123.md](2026/s4/261124b_folder_picker_dialog_v1123.md) — 1.12.3: "Browse…" button opens a non-modal, draggable, resizable, adjustable-opacity folder picker (left: places from new /api/places, pinned, recent; right: folder listing); click/dblclick/Ctrl/Shift share main list selection; "Open" switches main folder. Gotcha: web/dist must be rebuilt (rust-embed).
   Keywords: picker.ts, initPicker, /api/places, places_for, pins, recent, localStorage, resize, ResizeObserver, --pk-alpha, color-mix, box-sizing, 1.12.3
+- [2026/s4/261126b_zip_folder_button_v1141.md](2026/s4/261126b_zip_folder_button_v1141.md) — 1.14.1: "Zip folder" button; `POST /api/zip-dir` writes `<folder>.zip` beside the folder (no download, local-only, 409 + overwrite confirm, zips all files). rsync-to-another-machine button is the next step.
+  Keywords: zip-dir, zip_dir, zip_add_dir, ZipWriter, .partial, overwrite, 409, guard_with, X-Lobj-Requested, zipDir, rsync, ssh, 1.14.1

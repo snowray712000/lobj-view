@@ -1090,6 +1090,34 @@ document.getElementById('busy-cancel')!.addEventListener('click', () => {
 
 let browseCtl: AbortController | null = null;
 
+// 壓縮目前資料夾：後端在該資料夾的同層寫出「資料夾名.zip」（之後再用它同步到別台電腦）
+document.getElementById('zip-dir')!.addEventListener('click', async () => {
+  const btn = document.getElementById('zip-dir') as HTMLButtonElement;
+  btn.disabled = true;
+  infoEl.textContent = t().zipping;
+  try {
+    for (let overwrite = false; ; ) {
+      const r = await fetch('/api/zip-dir', {
+        method: 'POST',
+        headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: curDir, overwrite }),
+      });
+      if (r.status === 409 && !overwrite && confirm(`${await r.text()}\n${t().zipOverwrite}`)) {
+        overwrite = true;
+        continue;
+      }
+      if (!r.ok) throw new Error(await r.text());
+      const res = (await r.json()) as { zip_path: string; size: number; files: number };
+      infoEl.textContent = t().zipDone(res.zip_path, res.size, res.files);
+      break;
+    }
+  } catch (e) {
+    infoEl.textContent = t().failed(e instanceof Error ? e.message : String(e));
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 /** 進入資料夾（或貼上的路徑；若是檔案則進入它所在的資料夾並開啟它）。 */
 async function browse(path: string): Promise<void> {
   browseCtl?.abort(); // 新的瀏覽取代還沒完成的舊瀏覽

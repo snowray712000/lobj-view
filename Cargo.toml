@@ -1,6 +1,6 @@
 [package]
 name = "lobj-view"
-version = "1.13.3"
+version = "1.14.1"
 edition = "2024"
 description = "Web-based viewer for .lobj (labeled binary 3D object) files"
 # cargo install / cargo package 只帶這些檔案；web/dist 必須事先 build 好並一起發佈，
