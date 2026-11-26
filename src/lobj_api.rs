@@ -58,6 +58,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/lobj-convert", post(convert))
         .route("/api/lobj-delete-old", post(delete_old))
         .route("/api/zip-dir", post(zip_dir))
+        .route("/api/zip-extract", post(zip_extract))
         .route("/api/places", get(places))
         .route("/api/events", get(events))
         .route("/api/stats", get(stats))
@@ -924,6 +925,120 @@ async fn zip_dir(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
                 std::fs::remove_file(&plan.tmp).ok();
                 format!("{{\"error\":{}}}", json_string(&e.to_string()))
             }
+        };
+        tx.blocking_send(line(last)).ok();
+    });
+    ndjson_response(rx)
+}
+
+const UNZIP_REMOTE_MSG: &str = "解壓縮會在伺服器上寫入檔案，只在伺服器監聽本機位址或以 --admin 啟動時開放";
+
+/// 解壓縮前的檢查結果。
+struct UnzipPlan {
+    zip: PathBuf,
+    /// 實際解壓到的資料夾（entry 路徑相對於它）
+    into: PathBuf,
+    /// 解完後使用者要看的資料夾
+    shown: PathBuf,
+    total: u64,
+}
+
+/// 把磁碟上的 `.zip` 解壓到與它同層的位置。body：`{ "path": zip, "overwrite": bool }`。
+/// - zip 內全部在同一個最上層資料夾（例如本程式「壓縮資料夾」產生的）→ 解到 zip 所在資料夾，結果就是該資料夾；
+/// - 否則解到同層的「zip 檔名（去掉 .zip）」資料夾。
+///
+/// 結果資料夾已存在且未指定 overwrite 回 409（指定時，同名檔會被覆蓋、其他檔保留）。
+/// 路徑含 `..` / 絕對路徑的 entry 一律略過（zip-slip）；符號連結 entry 當一般檔案寫出，不會建立連結。
+/// 回 NDJSON 串流，格式同 `/api/zip-dir`：最後 `{"done":{"dir","files","size"}}`；
+/// 前端中斷連線會停止解壓（已寫出的檔案保留）。
+async fn zip_extract(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, UNZIP_REMOTE_MSG) {
+        return e.into_response();
+    }
+    let input = body.get("path").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+    let root = shared.root();
+    let unrestricted = shared.local_only();
+    let plan = move || -> Result<UnzipPlan, (StatusCode, String)> {
+        let bad = |m: String| (StatusCode::BAD_REQUEST, m);
+        let r = resolve_ex(&root, &input, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.in_zip {
+            return Err(bad("zip 內的檔案不能解壓縮".into()));
+        }
+        if !r.real.is_file() || !r.real.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+            return Err(bad("不是 .zip 檔".into()));
+        }
+        let Some(base) = r.real.parent().map(Path::to_path_buf) else {
+            return Err(bad("找不到 zip 所在的資料夾".into()));
+        };
+        let file = std::fs::File::open(&r.real).map_err(|e| bad(e.to_string()))?;
+        let mut za = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|e| bad(format!("不是有效的 zip：{e}")))?;
+        let mut tops = std::collections::BTreeSet::new();
+        let mut loose_file = false;
+        let mut total = 0u64;
+        for i in 0..za.len() {
+            let Ok(f) = za.by_index_raw(i) else { continue };
+            total += f.size();
+            let Some(p) = f.enclosed_name() else { continue };
+            let mut comps = p.components();
+            let Some(first) = comps.next() else { continue };
+            tops.insert(first.as_os_str().to_string_lossy().into_owned());
+            if comps.next().is_none() && !f.is_dir() {
+                loose_file = true;
+            }
+        }
+        let (into, shown) = match tops.iter().next() {
+            Some(top) if tops.len() == 1 && !loose_file => (base.clone(), base.join(top)),
+            _ => {
+                let d = base.join(r.real.file_stem().unwrap_or_default());
+                (d.clone(), d)
+            }
+        };
+        if shown.exists() && !overwrite {
+            return Err((StatusCode::CONFLICT, format!("{} 已存在", shown.display())));
+        }
+        Ok(UnzipPlan { zip: r.real, into, shown, total })
+    };
+    let plan = match tokio::task::spawn_blocking(plan).await {
+        Ok(Ok(p)) => p,
+        Ok(Err((c, m))) => return (c, m).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    tokio::task::spawn_blocking(move || {
+        let work = || -> anyhow::Result<(u64, usize)> {
+            let mut za = zip::ZipArchive::new(std::io::BufReader::new(std::fs::File::open(&plan.zip)?))?;
+            let mut prog = ZipProgress { tx: &tx, done: 0, total: plan.total, last_pct: 0, last: std::time::Instant::now() };
+            let (mut count, mut size) = (0usize, 0u64);
+            for i in 0..za.len() {
+                let mut f = za.by_index(i)?;
+                let Some(rel) = f.enclosed_name() else { continue };
+                let out = plan.into.join(rel);
+                if f.is_dir() {
+                    std::fs::create_dir_all(&out)?;
+                    continue;
+                }
+                if let Some(parent) = out.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut w = std::fs::File::create(&out)?;
+                let mut buf = vec![0u8; 256 * 1024];
+                loop {
+                    let n = std::io::Read::read(&mut f, &mut buf)?;
+                    if n == 0 {
+                        break;
+                    }
+                    std::io::Write::write_all(&mut w, &buf[..n])?;
+                    prog.add(n as u64)?;
+                }
+                count += 1;
+                size += f.size();
+            }
+            Ok((size, count))
+        };
+        let last = match work() {
+            Ok((size, files)) => format!("{{\"done\":{{\"dir\":{},\"size\":{size},\"files\":{files}}}}}", json_string(&plan.shown.to_string_lossy())),
+            Err(e) => format!("{{\"error\":{}}}", json_string(&e.to_string())),
         };
         tx.blocking_send(line(last)).ok();
     });

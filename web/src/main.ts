@@ -1112,6 +1112,41 @@ document.getElementById('zip-del')!.addEventListener('click', async () => {
   await browse(curDir);
 });
 
+// 解壓縮所選的 .zip（同層；已存在先問是否覆蓋）。readStream / opProgress 在檔案後段宣告，點擊時才用到。
+document.getElementById('zip-extract')!.addEventListener('click', async () => {
+  if (!selDir) return;
+  const btn = document.getElementById('zip-extract') as HTMLButtonElement;
+  btn.disabled = true;
+  infoEl.textContent = t().unzipping;
+  try {
+    for (let overwrite = false; ; ) {
+      const r = await fetch('/api/zip-extract', {
+        method: 'POST',
+        headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: selDir, overwrite }),
+      });
+      if (r.status === 409 && !overwrite && confirm(`${await r.text()}\n${t().zipOverwrite}`)) {
+        overwrite = true;
+        continue;
+      }
+      if (!r.ok) throw new Error(await r.text());
+      const res = await readStream<{ dir: string; size: number; files: number }>(r, (p) => {
+        opProgress.hidden = false;
+        opBar.value = p.progress;
+        opText.textContent = `${p.progress}%`;
+      });
+      infoEl.textContent = t().unzipDone(res.dir, res.size, res.files);
+      await browse(curDir);
+      break;
+    }
+  } catch (e) {
+    infoEl.textContent = t().failed(e instanceof Error ? e.message : String(e));
+  } finally {
+    btn.disabled = false;
+    opProgress.hidden = true;
+  }
+});
+
 // --- 同步到另一台電腦（rsync over ssh）：輸入 user@host（要有 ssh 金鑰，不問密碼），挑遠端資料夾 ---
 const syncEl = document.getElementById('sync')!;
 const syncHost = document.getElementById('sync-host') as HTMLInputElement;
