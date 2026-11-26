@@ -82,3 +82,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: to-lobj2, web/public, static_handler, lobj-convert, batch UI, 1.16.2
 - [2026/s4/261126h_to_lobj2_vite_v1163.md](2026/s4/261126h_to_lobj2_vite_v1163.md) — 1.16.3: `/to-lobj2` rewritten as a second Vite entry sharing picker, i18n, theme and styles with the viewer; static page removed.
   Keywords: vite multi-page, rollupOptions.input, to-lobj2.ts, initPicker, l2 i18n keys, 1.16.3
+- [2026/s4/261126i_delete_old_lobj_v1164.md](2026/s4/261126i_delete_old_lobj_v1164.md) — 1.16.4: `/to-lobj2` button + `POST /api/lobj-delete-old` deleting .lobj whose .lobj2 already exists (counts verified first).
+  Keywords: lobj-delete-old, delete_old, to-lobj2, 1.16.4

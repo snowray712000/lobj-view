@@ -56,6 +56,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/lobj", get(list))
         .route("/api/lobj/{*path}", get(fetch))
         .route("/api/lobj-convert", post(convert))
+        .route("/api/lobj-delete-old", post(delete_old))
         .route("/api/zip-dir", post(zip_dir))
         .route("/api/places", get(places))
         .route("/api/events", get(events))
@@ -573,6 +574,47 @@ async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
             format!("{{\"new_path\":{},\"deleted\":{delete_old}}}", json_string(&new_path)),
         )
             .into_response(),
+        Ok(Err((c, m))) => (c, m).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// 刪除「同名 `.lobj2` 已存在」的舊 `.lobj`（先前已轉過、現在只想清掉舊檔的情境）。body：`{ "path": 相對 --dir 的 .lobj 路徑 }`。
+/// 刪之前會讀回兩個檔案，頂點數與三角形數都一致才刪，避免 `.lobj2` 壞掉或不是同一份資料時誤刪。
+async fn delete_old(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, CONVERT_REMOTE_MSG) {
+        return e.into_response();
+    }
+    let Some(path) = body.get("path").and_then(|v| v.as_str()).map(str::to_owned) else {
+        return (StatusCode::BAD_REQUEST, "缺少 path").into_response();
+    };
+    let root = shared.root();
+    let unrestricted = shared.local_only();
+    let job = move || -> Result<(), (StatusCode, String)> {
+        let bad = |c: StatusCode, m: &str| (c, m.to_string());
+        let r = resolve_ex(&root, &path, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.in_zip {
+            return Err(bad(StatusCode::BAD_REQUEST, "zip 內的檔案不能刪除"));
+        }
+        let is_lobj = r.real.extension().is_some_and(|e| e.eq_ignore_ascii_case("lobj"));
+        if !r.real.is_file() || !is_lobj {
+            return Err(bad(StatusCode::BAD_REQUEST, "只能刪除 .lobj 檔案"));
+        }
+        let new = r.real.with_extension("lobj2");
+        if !new.is_file() {
+            return Err(bad(StatusCode::CONFLICT, "找不到同名的 .lobj2，未刪除"));
+        }
+        let le = |e: LobjError| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string());
+        let jaw = Jaw::guess_from_path(&r.real);
+        let old = lobj::load(&r.real, jaw).map_err(le)?;
+        let new_obj = lobj::load(&new, None).map_err(le)?;
+        if old.vertices.len() != new_obj.vertices.len() || old.triangles.len() != new_obj.triangles.len() {
+            return Err(bad(StatusCode::CONFLICT, ".lobj2 與 .lobj 的頂點 / 三角形數不一致，未刪除"));
+        }
+        std::fs::remove_file(&r.real).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+    };
+    match tokio::task::spawn_blocking(job).await {
+        Ok(Ok(())) => (StatusCode::OK, "ok").into_response(),
         Ok(Err((c, m))) => (c, m).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

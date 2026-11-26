@@ -236,6 +236,11 @@ const zh = {
   l2Count: (n: number, total: number) => `勾選 ${n} / ${total} 個`,
   l2ConfirmDel: (n: number) => `轉換成功後會刪除 ${n} 個原本的 .lobj，確定？`,
   l2Summary: (ok: number, fail: number) => `完成：成功 ${ok} 個，失敗 ${fail} 個`,
+  l2DelOld: '刪除已有 .lobj2 的 .lobj',
+  l2DelOldTip: '刪除這個資料夾中「同名 .lobj2 已存在」的 .lobj（刪前會讀回比對頂點 / 三角形數）',
+  l2DelOldConfirm: (n: number) => `刪除 ${n} 個已有同名 .lobj2 的 .lobj？`,
+  l2Deleted: '✓ 已刪除 .lobj',
+  l2DelSummary: (ok: number, fail: number) => `刪除完成：成功 ${ok} 個，失敗 ${fail} 個`,
   sentenceSep: '。',
 };
 
@@ -464,6 +469,11 @@ const en: Dict = {
   l2Count: (n, total) => `${n} / ${total} selected`,
   l2ConfirmDel: (n) => `Delete ${n} original .lobj file(s) after conversion?`,
   l2Summary: (ok, fail) => `Done: ${ok} succeeded, ${fail} failed`,
+  l2DelOld: 'Delete .lobj that already have a .lobj2',
+  l2DelOldTip: 'Delete the .lobj files in this folder whose same-name .lobj2 exists (vertex / triangle counts are checked first)',
+  l2DelOldConfirm: (n) => `Delete ${n} .lobj file(s) that already have a .lobj2?`,
+  l2Deleted: '✓ .lobj deleted',
+  l2DelSummary: (ok, fail) => `Deleted: ${ok} succeeded, ${fail} failed`,
   sentenceSep: '. ',
 };
 
@@ -691,6 +701,11 @@ const vi: Dict = {
   l2Count: (n, total) => `Đã chọn ${n} / ${total}`,
   l2ConfirmDel: (n) => `Xóa ${n} tệp .lobj gốc sau khi chuyển?`,
   l2Summary: (ok, fail) => `Xong: ${ok} thành công, ${fail} lỗi`,
+  l2DelOld: 'Xóa .lobj đã có .lobj2',
+  l2DelOldTip: 'Xóa các tệp .lobj trong thư mục này đã có .lobj2 cùng tên (kiểm tra số đỉnh / tam giác trước)',
+  l2DelOldConfirm: (n) => `Xóa ${n} tệp .lobj đã có .lobj2?`,
+  l2Deleted: '✓ Đã xóa .lobj',
+  l2DelSummary: (ok, fail) => `Đã xóa: ${ok} thành công, ${fail} lỗi`,
   sentenceSep: '. ',
 };
 

@@ -15,6 +15,8 @@ interface Row {
   size: number;
   jaw: Jaw;
   exists: boolean;
+  /** 這個 .lobj 已被刪除（列仍保留顯示結果） */
+  removed?: boolean;
   /** 轉換進度的狀態（HTML 已跳脫）；空字串 = 依其他欄位顯示預設狀態 */
   state: () => string;
 }
@@ -103,6 +105,7 @@ function render(): void {
 function renderCount(): void {
   $('l2-count').textContent = t().l2Count(todo().length, rows.length);
   $<HTMLButtonElement>('l2-run').disabled = busy || !todo().length;
+  $<HTMLButtonElement>('l2-delold').disabled = busy || !rows.some((r) => r.exists && !r.removed);
   $<HTMLInputElement>('l2-all').checked = rows.length > 0 && rows.every((r) => r.exists || selected.has(r.full));
 }
 
@@ -202,6 +205,41 @@ $('l2-run').addEventListener('click', async () => {
   }
   busy = false;
   lastSummary = t().l2Summary(ok, fail);
+  render();
+});
+
+// 已經轉過了、現在只想清掉舊 .lobj：刪除所有「同名 .lobj2 已存在」的 .lobj（後端刪前會讀回比對）
+$('l2-delold').addEventListener('click', async () => {
+  const list = rows.filter((r) => r.exists && !r.removed);
+  if (!list.length || !confirm(t().l2DelOldConfirm(list.length))) return;
+  busy = true;
+  const bar = $<HTMLProgressElement>('l2-bar');
+  bar.hidden = false;
+  bar.max = list.length;
+  bar.value = 0;
+  let ok = 0;
+  let fail = 0;
+  for (const r of list) {
+    try {
+      const res = await fetch('/api/lobj-delete-old', {
+        method: 'POST',
+        headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: r.full }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      r.removed = true;
+      r.state = () => `<span class="ok">${esc(t().l2Deleted)}</span>`;
+      ok++;
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      r.state = () => `<span class="bad">${esc(t().l2Failed(m))}</span>`;
+      fail++;
+    }
+    bar.value++;
+    render();
+  }
+  busy = false;
+  lastSummary = t().l2DelSummary(ok, fail);
   render();
 });
 
