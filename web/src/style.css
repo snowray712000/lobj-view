@@ -406,6 +406,34 @@ body {
   min-width: 0;
 }
 
+#sync-jobs {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 0.9em;
+}
+
+#sync-jobs li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+#sync-jobs .job-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sync-jobs .failed {
+  color: var(--systemRed, #d33);
+}
+
 #sync-list {
   list-style: none;
   margin: 6px 0;

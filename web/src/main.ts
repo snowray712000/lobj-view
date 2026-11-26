@@ -1120,6 +1120,65 @@ const syncDir = document.getElementById('sync-dir') as HTMLInputElement;
 const syncList = document.getElementById('sync-list')!;
 const syncMsg = document.getElementById('sync-msg')!;
 const syncBar = document.getElementById('sync-bar') as HTMLProgressElement;
+const syncBg = document.getElementById('sync-bg') as HTMLInputElement;
+const syncJobsEl = document.getElementById('sync-jobs')!;
+const syncJobsTitle = document.getElementById('sync-jobs-title')!;
+let jobTimer = 0;
+
+interface SyncJob {
+  id: string;
+  session: string;
+  zip: string;
+  dest: string;
+  state: 'running' | 'done' | 'failed' | 'stopped';
+  progress: number;
+  speed: string;
+  error: string;
+}
+
+/** 背景工作（本機 tmux）：列出狀態；有工作在跑且視窗開著就每 2 秒更新一次。 */
+async function loadJobs(): Promise<void> {
+  window.clearTimeout(jobTimer);
+  if (syncEl.hidden) return;
+  try {
+    const r = await fetch('/api/sync-jobs');
+    if (!r.ok) throw new Error(await r.text());
+    const res = (await r.json()) as { tmux: boolean; jobs: SyncJob[] };
+    syncBg.disabled = !res.tmux;
+    if (!res.tmux) syncBg.checked = false;
+    document.getElementById('sync-bg-wrap')!.title = res.tmux ? t().syncBgTip : t().syncBgNoTmux;
+    syncJobsTitle.hidden = !res.jobs.length;
+    syncJobsEl.replaceChildren();
+    for (const j of res.jobs) {
+      const li = document.createElement('li');
+      const text = document.createElement('span');
+      text.className = `job-text${j.state === 'failed' ? ' failed' : ''}`;
+      const name = j.zip.split(/[\\/]/).pop();
+      const st = { running: `${j.progress}% ${j.speed}`, done: t().jobDone, failed: t().jobFailed, stopped: t().jobStopped }[j.state];
+      text.textContent = `${name} → ${j.dest} · ${st}${j.error ? ` · ${j.error}` : ''}`;
+      text.title = `tmux attach -t ${j.session}\n${j.error}`;
+      li.appendChild(text);
+      if (j.state === 'running') {
+        const bar = document.createElement('progress');
+        bar.max = 100;
+        bar.value = j.progress;
+        const stop = document.createElement('button');
+        stop.type = 'button';
+        stop.textContent = t().jobStop;
+        stop.addEventListener('click', async () => {
+          await assocCall('/api/sync-job-stop', { id: j.id });
+          void loadJobs();
+        });
+        li.append(bar, stop);
+      }
+      syncJobsEl.appendChild(li);
+    }
+    if (res.jobs.some((j) => j.state === 'running')) jobTimer = window.setTimeout(() => void loadJobs(), 2000);
+  } catch {
+    // 讀不到就不更新（可能只是伺服器重啟中）
+    jobTimer = window.setTimeout(() => void loadJobs(), 5000);
+  }
+}
 const syncGo = document.getElementById('sync-go') as HTMLButtonElement;
 let syncCtl: AbortController | null = null;
 let syncZip = '';
@@ -1179,11 +1238,13 @@ document.getElementById('zip-sync')!.addEventListener('click', () => {
   syncDir.value ||= store('lobj-view-sync-dir');
   syncMsg.textContent = '';
   syncEl.hidden = false;
+  void loadJobs();
   if (syncHost.value) void remoteLs(syncDir.value);
 });
 document.getElementById('sync-close')!.addEventListener('click', () => {
-  syncCtl?.abort(); // 中斷連線 → 後端殺掉 ssh / rsync
+  syncCtl?.abort(); // 中斷連線 → 後端殺掉 ssh / rsync（背景工作在 tmux 裡，不受影響）
   syncEl.hidden = true;
+  window.clearTimeout(jobTimer);
 });
 document.getElementById('sync-connect')!.addEventListener('click', () => void remoteLs(syncDir.value));
 for (const el of [syncHost, syncPass, syncDir]) el.addEventListener('keydown', (e) => e.key === 'Enter' && void remoteLs(syncDir.value));
@@ -1193,13 +1254,22 @@ syncGo.addEventListener('click', async () => {
   syncGo.disabled = true;
   syncMsg.textContent = t().syncRunning;
   try {
+    const bg = syncBg.checked;
     const r = await fetch('/api/zip-sync', {
       method: 'POST',
       headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: syncZip, host: syncHost.value, dir: syncDir.value, passphrase: syncPass.value }),
+      body: JSON.stringify({ path: syncZip, host: syncHost.value, dir: syncDir.value, passphrase: syncPass.value, background: bg }),
       signal: ctl.signal,
     });
     if (!r.ok) throw new Error(await r.text());
+    if (bg) {
+      const j = (await r.json()) as { session: string };
+      store('lobj-view-sync-host', syncHost.value);
+      store('lobj-view-sync-dir', syncDir.value);
+      syncMsg.textContent = t().syncBgStarted(j.session);
+      void loadJobs();
+      return;
+    }
     const res = await readStream<{ dest: string }>(r, (p) => {
       syncBar.hidden = false;
       syncBar.value = p.progress;

@@ -3,6 +3,9 @@
 //! - `POST /api/remote-ls` `{ host, path }`：用 ssh 列出遠端資料夾（只列子資料夾），給前端的目錄選擇用。
 //!   `path` 空字串＝遠端家目錄；回傳 `{ path, dirs }`，`path` 是遠端 `pwd` 的結果，`writable` 表示目前帳號能否寫入該資料夾。
 //! - `POST /api/zip-sync` `{ path, host, dir, passphrase? }`：`rsync -a` 把該 zip 傳到 `host:dir/`，回應是 NDJSON 進度串流（見 `zip_sync`）。
+//! - `zip-sync` 帶 `background: true`：改在本機的 detached tmux session 裡跑 rsync（見 `start_bg`），立刻回 `{ id, session }`；
+//!   關掉 ssh / 重啟 lobj-view 都不會中斷。`GET /api/sync-jobs` 回傳 `{ tmux, jobs }`（進度與狀態由工作資料夾裡的 log / status 檔判斷），
+//!   `POST /api/sync-job-stop { id }` 結束該 session。工作資料夾在 `data_local_dir/lobj-view/sync-jobs/<id>/`，金鑰密碼只暫存在其中權限 0600 的 `pass`，結束或中止即刪。
 //! - `POST /api/zip-delete` `{ path }`：刪除該 zip（只刪 `.zip` 檔）。
 //!
 //! 都只在伺服器監聽本機位址時開放，且需 `X-Lobj-Requested`。ssh 預設 `BatchMode=yes`：沒有可用的金鑰就直接失敗，
@@ -21,7 +24,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
 use tokio::process::Command;
 
@@ -68,6 +71,8 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/remote-ls", post(remote_ls))
         .route("/api/zip-sync", post(zip_sync))
         .route("/api/zip-delete", post(zip_delete))
+        .route("/api/sync-jobs", get(sync_jobs))
+        .route("/api/sync-job-stop", post(sync_job_stop))
         .with_state(shared)
 }
 
@@ -258,6 +263,9 @@ async fn zip_sync(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
     };
     let name = zip.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let dest = format!("{host}:{}", if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) });
+    if body.get("background").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return respond(start_bg(&zip, &dest, &name, pass.as_deref()).await);
+    }
     let mut cmd = Command::new("rsync");
     // -s：遠端路徑不經遠端 shell 解析（空白、特殊字元安全）
     cmd.args(["-a", "-s", "--partial", "--info=progress2", "-e", &format!("ssh {}", ssh_opts(pass.as_deref())), "--"]).arg(&zip).arg(&dest);
@@ -282,6 +290,184 @@ async fn zip_delete(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(
         guard(&shared, &headers)?;
         let zip = real_zip(&shared, &str_of(&body, "path"))?;
         std::fs::remove_file(&zip).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        Ok("{}".to_string())
+    }
+    .await)
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// 背景執行（tmux）
+// ---------------------------------------------------------------------------------------------
+
+fn jobs_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("lobj-view").join("sync-jobs"))
+}
+
+/// 工作 id 只允許數字（毫秒時間戳），同時也是資料夾名與 tmux session 名（`lobj-sync-<id>`）的一部分。
+fn valid_job_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 20 && id.chars().all(|c| c.is_ascii_digit())
+}
+
+fn session_of(id: &str) -> String {
+    format!("lobj-sync-{id}")
+}
+
+async fn tmux_available() -> bool {
+    let mut cmd = Command::new("tmux");
+    cmd.arg("-V");
+    run(cmd, Duration::from_secs(5), "tmux").await.is_ok_and(|o| o.status.success())
+}
+
+/// 在 detached tmux session 裡執行 rsync。回傳 `{ id, session }`。
+async fn start_bg(zip: &std::path::Path, dest: &str, name: &str, pass: Option<&str>) -> Result<String, Fail> {
+    if cfg!(not(unix)) {
+        return Err((StatusCode::NOT_IMPLEMENTED, "背景執行（tmux）只支援 Linux / macOS".into()));
+    }
+    if !tmux_available().await {
+        return Err((StatusCode::NOT_IMPLEMENTED, "找不到 tmux，請先安裝（或取消勾選「背景執行」）".into()));
+    }
+    let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string();
+    let dir = jobs_dir().ok_or((StatusCode::INTERNAL_SERVER_ERROR, "找不到資料夾可存放工作紀錄".to_string()))?.join(&id);
+    std::fs::create_dir_all(&dir).map_err(io)?;
+    let write = |file: &str, text: &str, mode: u32| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut o = std::fs::OpenOptions::new();
+        o.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut o, mode);
+        let _ = mode;
+        o.open(dir.join(file))?.write_all(text.as_bytes())
+    };
+    let q = |p: &std::path::Path| sh_quote(&p.to_string_lossy());
+    let mut script = format!("#!/bin/sh\ncd {}\n", q(&dir));
+    if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+        script += &format!("export SSH_AUTH_SOCK={}\n", sh_quote(&sock));
+    }
+    if let Some(p) = pass {
+        write("pass", &format!("{p}\n"), 0o600).map_err(io)?;
+        write("askpass.sh", &format!("#!/bin/sh\ncat {}\n", q(&dir.join("pass"))), 0o700).map_err(io)?;
+        script += &format!("export SSH_ASKPASS={} SSH_ASKPASS_REQUIRE=force\n", q(&dir.join("askpass.sh")));
+    }
+    // tee：tmux 畫面看得到 rsync 輸出（可 attach），同時存成 log 給 UI 解析；退出碼先寫 rc 再改名 status（避免讀到寫一半的檔）
+    script += &format!(
+        "{{ rsync -a -s --partial --info=progress2 -e {} -- {} {}; echo $? > rc; }} 2>&1 | tee log\nmv rc status\nrm -f pass askpass.sh\n",
+        sh_quote(&format!("ssh {}", ssh_opts(pass))),
+        q(zip),
+        sh_quote(dest)
+    );
+    write("run.sh", &script, 0o700).map_err(io)?;
+    let meta = serde_json::json!({ "zip": zip.to_string_lossy(), "dest": format!("{dest}{name}"), "started": id });
+    write("job.json", &meta.to_string(), 0o600).map_err(io)?;
+
+    let mut cmd = Command::new("tmux");
+    cmd.args(["new-session", "-d", "-s", &session_of(&id), &format!("sh {}", q(&dir.join("run.sh")))]);
+    match run(cmd, Duration::from_secs(10), "tmux").await {
+        Ok(o) if o.status.success() => Ok(format!("{{\"id\":\"{id}\",\"session\":{}}}", json_string(&session_of(&id)))),
+        Ok(o) => {
+            std::fs::remove_dir_all(&dir).ok();
+            Err((StatusCode::BAD_GATEWAY, tail(&o.stderr)))
+        }
+        Err(e) => {
+            std::fs::remove_dir_all(&dir).ok();
+            Err(e)
+        }
+    }
+}
+
+/// log 最後幾段中，把 rsync 的進度行（`37%`）去掉，剩下的當錯誤訊息。
+fn log_error(log: &[u8]) -> String {
+    let s = String::from_utf8_lossy(log);
+    let lines: Vec<&str> = s.split(['\r', '\n']).filter(|l| !l.trim().is_empty() && parse_progress(l).is_none()).collect();
+    lines[lines.len().saturating_sub(5)..].join("\n")
+}
+
+fn read_tail(path: &std::path::Path, max: u64) -> Vec<u8> {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(path) else { return Vec::new() };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    f.seek(SeekFrom::Start(len.saturating_sub(max))).ok();
+    let mut v = Vec::new();
+    f.read_to_end(&mut v).ok();
+    v
+}
+
+async fn session_alive(id: &str) -> bool {
+    let mut cmd = Command::new("tmux");
+    cmd.args(["has-session", "-t", &format!("={}", session_of(id))]);
+    run(cmd, Duration::from_secs(5), "tmux").await.is_ok_and(|o| o.status.success())
+}
+
+/// 工作結束或中止後不再需要密碼：刪掉暫存的 pass / askpass.sh。
+fn drop_secrets(dir: &std::path::Path) {
+    std::fs::remove_file(dir.join("pass")).ok();
+    std::fs::remove_file(dir.join("askpass.sh")).ok();
+}
+
+async fn sync_jobs(State(shared): State<Arc<Shared>>, headers: HeaderMap) -> Response {
+    respond(async {
+        crate::assoc::guard_with(&shared, &headers, false, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
+        let tmux = tmux_available().await;
+        let mut jobs = Vec::new();
+        let Some(root) = jobs_dir() else { return Ok("{\"tmux\":false,\"jobs\":[]}".to_string()) };
+        let mut ids: Vec<String> =
+            std::fs::read_dir(&root).map(|rd| rd.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+        ids.retain(|i| valid_job_id(i));
+        ids.sort_by(|a, b| b.cmp(a)); // 新的在前
+        let week_ms = 7u128 * 24 * 3600 * 1000;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        for id in ids {
+            let dir = root.join(&id);
+            let meta: serde_json::Value = std::fs::read_to_string(dir.join("job.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            let status = std::fs::read_to_string(dir.join("status")).ok().map(|t| t.trim().to_string());
+            let log = read_tail(&dir.join("log"), 8192);
+            let (state, error) = match status.as_deref() {
+                Some("0") => ("done", String::new()),
+                Some("stopped") => ("stopped", String::new()),
+                Some(_) => ("failed", log_error(&log)),
+                None if tmux && session_alive(&id).await => ("running", String::new()),
+                None => {
+                    drop_secrets(&dir);
+                    ("stopped", String::new()) // session 不見了又沒有 status：被手動結束或機器重開
+                }
+            };
+            // 超過 7 天的已結束工作順手清掉
+            if state != "running" && id.parse::<u128>().is_ok_and(|t| now.saturating_sub(t) > week_ms) {
+                std::fs::remove_dir_all(&dir).ok();
+                continue;
+            }
+            let (pct, speed) = if state == "done" {
+                (100, String::new())
+            } else {
+                String::from_utf8_lossy(&log).split(['\r', '\n']).rev().find_map(parse_progress).unwrap_or((0, String::new()))
+            };
+            jobs.push(serde_json::json!({
+                "id": id, "session": session_of(&id), "zip": meta["zip"], "dest": meta["dest"],
+                "state": state, "progress": pct, "speed": speed, "error": error,
+            }));
+        }
+        Ok(serde_json::json!({ "tmux": tmux, "jobs": jobs }).to_string())
+    }
+    .await)
+}
+
+async fn sync_job_stop(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        guard(&shared, &headers)?;
+        let id = str_of(&body, "id");
+        if !valid_job_id(&id) {
+            return Err(bad("工作 id 不正確"));
+        }
+        let mut cmd = Command::new("tmux");
+        cmd.args(["kill-session", "-t", &format!("={}", session_of(&id))]);
+        run(cmd, Duration::from_secs(10), "tmux").await?; // session 已經不在也無妨，結果不檢查
+        if let Some(dir) = jobs_dir().map(|d| d.join(&id)) {
+            drop_secrets(&dir);
+            if !dir.join("status").exists() {
+                std::fs::write(dir.join("status"), "stopped").ok();
+            }
+        }
         Ok("{}".to_string())
     }
     .await)

@@ -74,3 +74,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: zipsync.rs, remote-ls, zip-sync, zip-delete, rsync, ssh, BatchMode, SSH_ASKPASS, SSH_ASKPASS_REQUIRE, askpass_mode, passphrase, accept-new, selectDir, writable, test -w, 1.14.2
 - [2026/s4/261126d_progress_bars_v1143.md](2026/s4/261126d_progress_bars_v1143.md) — 1.14.3: progress bars for zip-folder and rsync sync; endpoints stream NDJSON (progress lines, final done/error), rsync `--info=progress2` parsed.
   Keywords: NDJSON, progress, ZipProgress, dir_bytes, rsync_run, parse_progress, --info=progress2, readStream, op-progress, sync-bar, kill_on_drop, 1.14.3
+- [2026/s4/261126e_tmux_background_sync_v1144.md](2026/s4/261126e_tmux_background_sync_v1144.md) — 1.14.4: rsync can run in a detached local tmux session (survives closing ssh / restarting lobj-view); job folder with run.sh/log/status, jobs list + stop in the sync dialog.
+  Keywords: tmux, new-session, has-session, kill-session, sync-jobs, sync-job-stop, start_bg, run.sh, tee, status, rc, askpass.sh, pass 0600, parse_progress, loadJobs, 1.14.4
