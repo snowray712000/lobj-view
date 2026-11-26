@@ -90,3 +90,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: stat, dataset_stat.rs, stat.csv, FDI, stat-case, stat-save, 1.17.2
 - [2026/s4/261126l_stat_view_load_v1182.md](2026/s4/261126l_stat_view_load_v1182.md) — 1.18.2: `/stat` shows per-item counts/% (vertical, transposable), loads existing stat.csv via `/api/stat-csv`, button becomes "regenerate".
   Keywords: stat, stat-csv, parseCsv, transpose, regenerate, 1.18.2
+- [2026/s4/261126m_stat_download_v1183.md](2026/s4/261126m_stat_download_v1183.md) — 1.18.3: `/stat` "download .csv" button (client-side Blob, `stat-{dataset_name}.csv`).
+  Keywords: stat, download, Blob, buildCsv, 1.18.3

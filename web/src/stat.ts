@@ -101,6 +101,7 @@ function render(): void {
   run.disabled = busy;
   $<HTMLButtonElement>('st-save').disabled = busy || !fresh || !rows.length;
   $<HTMLButtonElement>('st-tr').disabled = !rows.length;
+  $<HTMLButtonElement>('st-dl').disabled = !rows.length;
 }
 
 /** 解析 CSV（支援雙引號欄位、欄內逗號 / 換行、"" 跳脫；去掉 BOM） */
@@ -259,6 +260,19 @@ $('st-run').addEventListener('click', async () => {
   bar.hidden = true;
   msg = t().stSummary(rows.length, rows.filter((r) => r.upper).length, rows.filter((r) => r.lower).length, rows.filter((r) => r.remark).length);
   render();
+});
+
+// 下載：在瀏覽器端用目前顯示的資料組 CSV（含 BOM，Excel 才不會亂碼），檔名 stat-{dataset_name}.csv；不經伺服器、遠端也能用
+$('st-dl').addEventListener('click', () => {
+  const ds = $<HTMLInputElement>('st-name').value.trim() || defaultName(cur.path) || 'dataset';
+  const blob = new Blob(['\uFEFF', buildCsv()], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `stat-${ds.replace(/[\\/:*?"<>|]/g, '_')}.csv`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 });
 
 $('st-tr').addEventListener('click', () => {
