@@ -86,3 +86,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: lobj-delete-old, delete_old, to-lobj2, 1.16.4
 - [2026/s4/261126j_to_lobj2_recursive_v1165.md](2026/s4/261126j_to_lobj2_recursive_v1165.md) — 1.16.5: `/to-lobj2` "include subfolders" checkbox; client-side recursive listing via /api/lobj.
   Keywords: recursive scan, scanAll, to-lobj2, include subfolders, 1.16.5
+- [2026/s4/261126k_stat_page_v1172.md](2026/s4/261126k_stat_page_v1172.md) — 1.17.2: `/stat` page + `/api/stat-case`, `/api/stat-save`; per-case upper/lower + FDI 0/1 matrix to stat.csv (UTF-8 BOM) in the dataset folder.
+  Keywords: stat, dataset_stat.rs, stat.csv, FDI, stat-case, stat-save, 1.17.2

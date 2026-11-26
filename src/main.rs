@@ -1,5 +1,6 @@
 mod assoc;
 mod convert_dir;
+mod dataset_stat;
 mod instance;
 mod lobj_api;
 mod stats;
@@ -247,6 +248,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/versions", get(|| async { include_str!("../doc/Versions.md") }))
         .route("/trust", get(trust_page))
         .merge(lobj_api::router(shared.clone()))
+        .merge(dataset_stat::router(shared.clone()))
         .merge(assoc::router(shared.clone()))
         .merge(update::router(shared.clone()))
         .merge(zipsync::router(shared.clone()));
@@ -411,6 +413,7 @@ async fn static_handler(uri: Uri) -> Response {
     let path = match path {
         "" => "index.html",
         "to-lobj2" | "to-lobj2/" => "to-lobj2.html",
+        "stat" | "stat/" => "stat.html",
         p => p,
     };
 

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lobj-view · stat</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <script type="module" crossorigin src="/assets/stat-b7q98CNs.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/style-D5MmarOc.js">
+    <link rel="stylesheet" crossorigin href="/assets/style-C-H4yXLC.css">
+    <link rel="stylesheet" crossorigin href="/assets/stat-CYqRwxSd.css">
+    <link rel="stylesheet" crossorigin href="/assets/to-lobj2-Dft0Y1wI.css">
+  </head>
+  <body>
+    <main id="l2" class="stat">
+      <h1 data-i18n="stTitle">資料集統計</h1>
+      <p class="hint"><span data-i18n="stHint"></span> <a href="/" data-i18n="l2Back">回檢視器</a></p>
+      <div class="row">
+        <button id="l2-up" type="button" data-i18n="l2Up">↑ 上一層</button>
+        <button id="picker-open" type="button" data-i18n="pickerBtn" data-i18n-title="pickerBtnTip">瀏覽…</button>
+        <input id="l2-path" type="text" spellcheck="false" data-i18n-placeholder="l2PathPh" />
+        <button id="l2-go" type="button" data-i18n="l2Go">前往</button>
+      </div>
+      <div class="row">
+        <label data-i18n-title="stNameTip"><span data-i18n="stName">資料集名稱</span> <input id="st-name" type="text" spellcheck="false" /></label>
+        <button id="st-run" type="button" class="primary" data-i18n="stRun">統計</button>
+        <button id="st-save" type="button" data-i18n="stSave" disabled>輸出 stat.csv</button>
+      </div>
+      <progress id="l2-bar" value="0" max="1" hidden></progress>
+      <div id="l2-msg"></div>
+      <div id="st-wrap">
+        <table id="st-table"></table>
+      </div>
+    </main>
+    <div id="picker" hidden>
+      <div class="dlg-head"><b data-i18n="pickerTitle">選擇資料夾與檔案</b><label class="pk-alpha" data-i18n-title="pickerAlphaTip" title="背景透明度">◐ <input id="picker-alpha" type="range" min="0.3" max="1" step="0.05" value="0.85" /></label><button id="picker-close" type="button">✕</button></div>
+      <div id="picker-body">
+        <div id="picker-side"></div>
+        <div id="picker-main">
+          <div id="picker-bar">
+            <input id="picker-path" type="text" spellcheck="false" />
+            <button id="picker-pin" type="button">📍</button>
+          </div>
+          <ul id="picker-list"></ul>
+          <div id="picker-info" class="hint"></div>
+        </div>
+      </div>
+      <div id="picker-foot">
+        <span class="hint" data-i18n="pickerHint">點擊加入選取</span>
+        <button id="picker-do-open" type="button" data-i18n="pickerOpen" data-i18n-title="pickerOpenTip">開啟</button>
+      </div>
+    </div>
+  </body>
+</html>

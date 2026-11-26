@@ -14,7 +14,7 @@ export default defineConfig({
     emptyOutDir: true,
     // 兩個入口：檢視器主畫面與獨立的批次轉檔頁（/to-lobj2，見 src/to-lobj2.ts）
     rollupOptions: {
-      input: { main: resolve(__dirname, 'index.html'), 'to-lobj2': resolve(__dirname, 'to-lobj2.html') },
+      input: { main: resolve(__dirname, 'index.html'), 'to-lobj2': resolve(__dirname, 'to-lobj2.html'), stat: resolve(__dirname, 'stat.html') },
     },
     target: 'esnext', // WebGPU 初始化使用 top-level await
     chunkSizeWarningLimit: 1500, // three.js 本身約 850 kB
