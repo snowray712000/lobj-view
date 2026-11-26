@@ -28,6 +28,9 @@ use tokio::net::TcpListener;
 #[allow_missing = true]
 struct Assets;
 
+/// 預設 port：開發建置用 8079，讓它能與已安裝的穩定版（8080）同時執行。
+const DEFAULT_PORT: u16 = if cfg!(debug_assertions) { 8079 } else { 8080 };
+
 /// 往上嘗試幾個 port，都被佔用時改由作業系統分配。
 const PORT_SEARCH_RANGE: u16 = 50;
 
@@ -60,8 +63,8 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1")]
     host: IpAddr,
 
-    /// 偏好的 port，被佔用時會自動往上找。
-    #[arg(short, long, default_value_t = 8080)]
+    /// 偏好的 port，被佔用時會自動往上找。開發（debug）建置預設 8079，發行（release）建置預設 8080。
+    #[arg(short, long, default_value_t = DEFAULT_PORT)]
     port: u16,
 
     /// 強制使用 HTTPS（本機位址預設是 HTTP）。
