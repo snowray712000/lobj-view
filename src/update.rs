@@ -300,7 +300,7 @@ static CACHE: Mutex<Option<(Instant, Release)>> = Mutex::new(None);
 static BUSY: AtomicBool = AtomicBool::new(false);
 
 const REMOTE_MSG: &str =
-    "伺服器監聽非本機位址，網頁預設不開放更新（請在伺服器上執行 lobj-view update，或以 --allow-remote-update 啟動）";
+    "伺服器監聽非本機位址，網頁預設不開放更新（請在伺服器上執行 lobj-view update，或以 --admin 啟動）";
 
 /// `--allow-remote-update`：監聽非本機位址時也讓網頁更新（預設關閉）。
 static ALLOW_REMOTE: AtomicBool = AtomicBool::new(false);

@@ -24,7 +24,7 @@ use lobj::labels::{LabelKind, classify};
 use crate::instance::Shared;
 use crate::lobj_api::resolve_ex;
 
-const REMOTE_MSG: &str = "統計輸出會寫入伺服器上的檔案，只在伺服器監聽本機位址時開放";
+const REMOTE_MSG: &str = "統計輸出會寫入伺服器上的檔案，只在伺服器監聽本機位址或以 --admin 啟動時開放";
 
 pub fn router(shared: Arc<Shared>) -> Router {
     Router::new()

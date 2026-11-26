@@ -45,6 +45,7 @@ pub struct Shared {
     last_browser: Mutex<Option<Instant>>,
     url: Mutex<String>,
     local_only: AtomicBool,
+    admin: AtomicBool,
 }
 
 impl Shared {
@@ -63,6 +64,7 @@ impl Shared {
             last_browser: Mutex::new(None),
             url: Mutex::new(String::new()),
             local_only: AtomicBool::new(false),
+            admin: AtomicBool::new(false),
         })
     }
 
@@ -81,6 +83,15 @@ impl Shared {
 
     pub fn local_only(&self) -> bool {
         self.local_only.load(Ordering::Relaxed)
+    }
+
+    /// `--admin`：即使監聽非本機位址，也開放更新、壓縮、同步、刪除、轉檔等管理操作（不含副檔名關聯）。
+    pub fn set_admin(&self, v: bool) {
+        self.admin.store(v, Ordering::Relaxed);
+    }
+
+    pub fn admin(&self) -> bool {
+        self.admin.load(Ordering::Relaxed)
     }
 
     pub fn set_url(&self, url: String) {

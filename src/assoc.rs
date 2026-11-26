@@ -424,11 +424,24 @@ pub fn router(shared: Arc<Shared>) -> Router {
 type ApiErr = (StatusCode, &'static str);
 
 fn guard(shared: &Shared, headers: &HeaderMap, write: bool) -> Result<(), ApiErr> {
-    guard_with(shared, headers, write, "伺服器監聽非本機位址，不開放變更副檔名關聯（請用 lobj-view register）")
+    guard_impl(shared, headers, write, false, "伺服器監聽非本機位址，不開放變更副檔名關聯（請用 lobj-view register）")
 }
 
 /// 只允許本機使用者做的操作（副檔名關聯、線上更新）共用的檢查；`remote_msg` 是監聽非本機位址時的說明。
+///
+/// 以 `--admin` 啟動時放行非本機來源（Host 不限），仍要求寫入帶 `X-Lobj-Requested`。
 pub(crate) fn guard_with(shared: &Shared, headers: &HeaderMap, write: bool, remote_msg: &'static str) -> Result<(), ApiErr> {
+    guard_impl(shared, headers, write, true, remote_msg)
+}
+
+/// `allow_admin = false` 用於改系統設定（註冊表）的端點：即使 `--admin` 也只限本機。
+fn guard_impl(shared: &Shared, headers: &HeaderMap, write: bool, allow_admin: bool, remote_msg: &'static str) -> Result<(), ApiErr> {
+    if allow_admin && shared.admin() {
+        if write && headers.get("x-lobj-requested").and_then(|h| h.to_str().ok()) != Some("1") {
+            return Err((StatusCode::FORBIDDEN, "缺少 X-Lobj-Requested 標頭"));
+        }
+        return Ok(());
+    }
     if !shared.local_only() {
         return Err((StatusCode::FORBIDDEN, remote_msg));
     }
@@ -509,6 +522,11 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert(header::HOST, "localhost:8080".parse().unwrap());
         assert!(guard(&sh, &h, false).is_err()); // 預設不是 local_only
+        sh.set_admin(true);
+        assert!(guard(&sh, &h, false).is_err()); // admin 不放行副檔名關聯
+        assert!(guard_with(&sh, &h, false, "x").is_ok()); // 但放行其他管理操作
+        assert!(guard_with(&sh, &h, true, "x").is_err()); // 仍要自訂標頭
+        sh.set_admin(false);
         sh.set_local_only(true);
         assert!(guard(&sh, &h, false).is_ok());
         assert!(guard(&sh, &h, true).is_err()); // 缺自訂標頭

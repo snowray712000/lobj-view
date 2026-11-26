@@ -488,7 +488,7 @@ async fn fetch(
     }
 }
 
-const CONVERT_REMOTE_MSG: &str = "轉檔會寫入並可能刪除伺服器上的檔案，只在伺服器監聽本機位址時開放";
+const CONVERT_REMOTE_MSG: &str = "轉檔會寫入並可能刪除伺服器上的檔案，只在伺服器監聽本機位址或以 --admin 啟動時開放";
 
 /// 把新檔的時間設成與舊檔相同（Windows 連建立時間一起）。
 fn copy_times(from: &std::fs::Metadata, to: &Path) -> std::io::Result<()> {
@@ -859,7 +859,7 @@ fn zip_add_dir<W: std::io::Write + std::io::Seek>(
     Ok(())
 }
 
-const ZIP_REMOTE_MSG: &str = "壓縮會在伺服器上寫入檔案，只在伺服器監聽本機位址時開放";
+const ZIP_REMOTE_MSG: &str = "壓縮會在伺服器上寫入檔案，只在伺服器監聽本機位址或以 --admin 啟動時開放";
 
 /// 壓縮前的檢查結果（這段失敗時還能回一般的 HTTP 錯誤）。
 struct ZipPlan {

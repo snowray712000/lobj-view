@@ -9,7 +9,7 @@
 //! - `POST /api/sync-job-clear { id? }`：刪除已結束（完成 / 失敗 / 中止）的工作紀錄；省略 `id` 就清掉全部已結束的，執行中的不動。
 //! - `POST /api/zip-delete` `{ path }`：刪除該 zip（只刪 `.zip` 檔）。
 //!
-//! 都只在伺服器監聽本機位址時開放，且需 `X-Lobj-Requested`。ssh 預設 `BatchMode=yes`：沒有可用的金鑰就直接失敗，
+//! 都只在伺服器監聽本機位址或以 --admin 啟動時開放，且需 `X-Lobj-Requested`。ssh 預設 `BatchMode=yes`：沒有可用的金鑰就直接失敗，
 //! 不會等密碼輸入。金鑰有密碼（ssh-agent 沒載入）時，前端可附 `passphrase`，改由 `SSH_ASKPASS`（本執行檔）供應；第一次連線的主機金鑰用 `accept-new` 自動記下（之後金鑰變了會拒絕）。
 //! `host` 嚴格檢查（不能以 `-` 開頭、只允許 `[user@]host`），避免被當成 ssh / rsync 的選項。
 //! 前端中斷連線時，子行程會被 `kill_on_drop` 殺掉。
@@ -32,7 +32,7 @@ use tokio::process::Command;
 use crate::instance::Shared;
 use crate::lobj_api::{LineTx, json_string, line, ndjson_response, resolve_ex};
 
-const REMOTE_MSG: &str = "同步與刪除只在伺服器監聽本機位址時開放";
+const REMOTE_MSG: &str = "同步與刪除只在伺服器監聽本機位址或以 --admin 啟動時開放";
 
 /// ssh 的共用選項。沒給金鑰密碼：`BatchMode=yes`（沒有可用的金鑰就直接失敗，不等輸入）；
 /// 有給：關掉 BatchMode，由 `SSH_ASKPASS` 回答 ssh 的詢問（金鑰密碼或登入密碼都用同一個字串），

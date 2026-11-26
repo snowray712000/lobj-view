@@ -56,6 +56,12 @@ struct Args {
     #[arg(long)]
     no_browser: bool,
 
+    /// 管理模式：即使 --host 0.0.0.0，網頁也能做自動更新、壓縮、同步、刪除、轉檔、輸出統計等
+    /// 原本只限本機的操作（不含副檔名關聯，也不放寬瀏覽範圍，仍限 --dir 內）。
+    /// 能開這個網頁的人都能改動、刪除伺服器上的檔案，請只在信任的網路使用。
+    #[arg(long)]
+    admin: bool,
+
     /// 允許非本機的網頁觸發線上更新（搭配 --host 0.0.0.0 時）。預設關閉：
     /// 開啟後區網上任何能開這個網頁的人都能讓伺服器更新到 GitHub 最新版並重新啟動。
     #[arg(long)]
@@ -216,6 +222,10 @@ async fn main() -> anyhow::Result<()> {
     std::thread::spawn(zipfs::cleanup_cache); // 清掉殘留與過期的 zip 解壓快取
     let shared = instance::Shared::new(dir, initial);
     shared.set_local_only(args.host.is_loopback());
+    shared.set_admin(args.admin);
+    if args.admin && !args.host.is_loopback() {
+        println!("注意: 已開啟 --admin，區網上的網頁也能更新、壓縮、同步、刪除與轉檔（沒有驗證，請只在信任的網路使用）");
+    }
     update::set_allow_remote(args.allow_remote_update);
     if args.allow_remote_update && !args.host.is_loopback() {
         println!("注意: 已開啟 --allow-remote-update，區網上的網頁也能觸發線上更新與重新啟動");
