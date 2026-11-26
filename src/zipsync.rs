@@ -32,7 +32,7 @@ use tokio::process::Command;
 use crate::instance::Shared;
 use crate::lobj_api::{LineTx, json_string, line, ndjson_response, resolve_ex};
 
-const REMOTE_MSG: &str = "同步與刪除只在伺服器監聽本機位址或以 --admin 啟動時開放";
+const REMOTE_MSG: &str = "同步、刪除、資料夾改名與拿掉一層只在伺服器監聽本機位址或以 --admin 啟動時開放";
 
 /// ssh 的共用選項。沒給金鑰密碼：`BatchMode=yes`（沒有可用的金鑰就直接失敗，不等輸入）；
 /// 有給：關掉 BatchMode，由 `SSH_ASKPASS` 回答 ssh 的詢問（金鑰密碼或登入密碼都用同一個字串），
@@ -72,6 +72,8 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/remote-ls", post(remote_ls))
         .route("/api/zip-sync", post(zip_sync))
         .route("/api/zip-delete", post(zip_delete))
+        .route("/api/dir-rename", post(dir_rename))
+        .route("/api/dir-flatten", post(dir_flatten))
         .route("/api/sync-jobs", get(sync_jobs))
         .route("/api/sync-job-stop", post(sync_job_stop))
         .route("/api/sync-job-clear", post(sync_job_clear))
@@ -188,6 +190,77 @@ fn real_zip(shared: &Shared, input: &str) -> Result<PathBuf, Fail> {
         return Err(bad("只能操作磁碟上的 .zip 檔"));
     }
     Ok(r.real)
+}
+
+/// 解析成「磁碟上真實存在、不在 zip 快取內的資料夾」，且不是根資料夾、也不是根資料夾的上層
+/// （改名或搬動它會讓伺服器的根資料夾失效）。
+fn real_dir(shared: &Shared, input: &str) -> Result<PathBuf, Fail> {
+    let root = shared.root();
+    let r = resolve_ex(&root, input, &AtomicBool::new(false), shared.local_only()).map_err(|(c, m)| (c, m.to_string()))?;
+    if r.in_zip || !r.real.is_dir() {
+        return Err(bad("只能操作磁碟上的資料夾"));
+    }
+    if r.real.parent().is_none() || root.starts_with(&r.real) {
+        return Err(bad("不能操作根資料夾（或它的上層）"));
+    }
+    Ok(r.real)
+}
+
+fn valid_dir_name(n: &str) -> bool {
+    !n.is_empty()
+        && n.len() <= 255
+        && n != "."
+        && n != ".."
+        && !n.ends_with(['.', ' '])
+        && !n.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+}
+
+/// 資料夾改名（同一層，不能搬動）。body：`{ "path": 資料夾, "name": 新名稱 }`；新名稱已存在回 409。
+/// 回 `{ "path": 新的完整路徑 }`。
+async fn dir_rename(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
+        let dir = real_dir(&shared, &str_of(&body, "path"))?;
+        let name = str_of(&body, "name");
+        if !valid_dir_name(&name) {
+            return Err(bad("名稱不正確（不可空白、含 / \\ : * ? \" < > |，或以 . 空白結尾）"));
+        }
+        let to = dir.with_file_name(&name);
+        if to == dir {
+            return Err(bad("名稱沒有改變"));
+        }
+        if to.exists() {
+            return Err((StatusCode::CONFLICT, format!("{name} 已存在")));
+        }
+        std::fs::rename(&dir, &to).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        Ok(format!("{{\"path\":{}}}", json_string(&to.to_string_lossy())))
+    }
+    .await)
+}
+
+/// 「拿掉這層」：把資料夾裡的項目全部移到它的上一層，再刪掉這個（已清空的）資料夾。
+/// body：`{ "path": 資料夾 }`。先檢查，上一層已有同名項目（含與資料夾自己同名）就整個不動並回 409；
+/// 最後用 `remove_dir`（只刪空資料夾）所以不會誤刪內容。回 `{ "moved": 搬了幾個, "path": 上一層 }`。
+async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
+        let dir = real_dir(&shared, &str_of(&body, "path"))?;
+        let parent = dir.parent().ok_or_else(|| bad("沒有上一層"))?.to_path_buf();
+        let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+        let names: Vec<std::ffi::OsString> = std::fs::read_dir(&dir).map_err(io)?.filter_map(Result::ok).map(|e| e.file_name()).collect();
+        let clash: Vec<String> = names.iter().filter(|n| parent.join(n).exists()).map(|n| n.to_string_lossy().into_owned()).collect();
+        if !clash.is_empty() {
+            let shown = clash.iter().take(5).cloned().collect::<Vec<_>>().join("、");
+            let more = if clash.len() > 5 { format!(" 等 {} 項", clash.len()) } else { String::new() };
+            return Err((StatusCode::CONFLICT, format!("上一層已有同名項目：{shown}{more}，未做任何變更")));
+        }
+        for n in &names {
+            std::fs::rename(dir.join(n), parent.join(n)).map_err(io)?;
+        }
+        std::fs::remove_dir(&dir).map_err(io)?;
+        Ok(format!("{{\"moved\":{},\"path\":{}}}", names.len(), json_string(&parent.to_string_lossy())))
+    }
+    .await)
 }
 
 /// rsync 的 `--info=progress2` 輸出形如 `  12,345,678  37%   10.50MB/s    0:00:05`（以 `\r` 更新同一行）。

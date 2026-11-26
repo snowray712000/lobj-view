@@ -1093,6 +1093,7 @@ let browseCtl: AbortController | null = null;
 // --- 選取資料夾 / .zip：選到磁碟上的 .zip 時顯示「同步到…」「刪除」 ---
 let selDir: string | null = null;
 const zipActionsEl = document.getElementById('zip-actions')!;
+const dirActionsEl = document.getElementById('dir-actions')!;
 
 function selectDir(full: string | null, isZip: boolean): void {
   selDir = full === selDir ? null : full; // 再點一次取消
@@ -1100,7 +1101,35 @@ function selectDir(full: string | null, isZip: boolean): void {
   // 目前就在某個 zip 裡面時，裡面的 zip 是快取副本，不能同步或刪除
   zipActionsEl.hidden = !(selDir && isZip && !/\.zip(\/|$)/i.test(curDir));
   document.getElementById('zip-sel')!.textContent = selDir ? selDir.split('/').pop()! : '';
+  // 一般資料夾：重新命名、拿掉這層（同樣不能在 zip 裡面）
+  dirActionsEl.hidden = !(selDir && !isZip && !/\.zip(\/|$)/i.test(curDir));
+  document.getElementById('dir-sel')!.textContent = selDir ? selDir.split('/').pop()! : '';
 }
+
+document.getElementById('dir-rename')!.addEventListener('click', async () => {
+  if (!selDir) return;
+  const old = selDir.split('/').pop()!;
+  const name = prompt(t().dirRenamePrompt(old), old)?.trim();
+  if (!name || name === old) return;
+  const r = await assocCall('/api/dir-rename', { path: selDir, name });
+  if (!r.ok) {
+    infoEl.textContent = t().failed(await r.text());
+    return;
+  }
+  await browse(curDir);
+});
+
+document.getElementById('dir-flatten')!.addEventListener('click', async () => {
+  if (!selDir || !confirm(t().dirFlattenConfirm(selDir.split('/').pop()!))) return;
+  const r = await assocCall('/api/dir-flatten', { path: selDir });
+  if (!r.ok) {
+    infoEl.textContent = t().failed(await r.text());
+    return;
+  }
+  const res = (await r.json()) as { moved: number };
+  await browse(curDir);
+  infoEl.textContent = t().dirFlattenDone(res.moved);
+});
 
 document.getElementById('zip-del')!.addEventListener('click', async () => {
   if (!selDir || !confirm(t().zipDelConfirm(selDir.split('/').pop()!))) return;

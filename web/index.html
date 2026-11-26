@@ -55,6 +55,11 @@
             <button id="zip-extract" type="button" data-i18n="zipExtract" data-i18n-title="zipExtractTip" title="把所選的 zip 解壓縮到同層">解壓縮</button>
             <button id="zip-del" type="button" data-i18n="zipDel" data-i18n-title="zipDelTip" title="刪除所選的 zip 檔（無法復原）">刪除</button>
           </div>
+          <div id="dir-actions" hidden>
+            <span id="dir-sel"></span>
+            <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip" title="重新命名所選的資料夾">重新命名</button>
+            <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip" title="把所選資料夾裡的項目移到上一層，再刪除這個空資料夾">拿掉這層</button>
+          </div>
           <div id="op-progress" hidden><progress id="op-bar" max="100" value="0"></progress> <span id="op-text"></span></div>
           <div id="info"></div>
         </div>

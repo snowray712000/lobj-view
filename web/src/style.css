@@ -386,11 +386,13 @@ body {
   width: 100%;
 }
 
-#zip-actions {
+#zip-actions,
+#dir-actions {
   margin: 4px 0;
 }
 
-#zip-sel {
+#zip-sel,
+#dir-sel {
   opacity: 0.85;
   margin-right: 6px;
 }
