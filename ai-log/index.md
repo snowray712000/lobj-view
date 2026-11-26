@@ -84,3 +84,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: vite multi-page, rollupOptions.input, to-lobj2.ts, initPicker, l2 i18n keys, 1.16.3
 - [2026/s4/261126i_delete_old_lobj_v1164.md](2026/s4/261126i_delete_old_lobj_v1164.md) — 1.16.4: `/to-lobj2` button + `POST /api/lobj-delete-old` deleting .lobj whose .lobj2 already exists (counts verified first).
   Keywords: lobj-delete-old, delete_old, to-lobj2, 1.16.4
+- [2026/s4/261126j_to_lobj2_recursive_v1165.md](2026/s4/261126j_to_lobj2_recursive_v1165.md) — 1.16.5: `/to-lobj2` "include subfolders" checkbox; client-side recursive listing via /api/lobj.
+  Keywords: recursive scan, scanAll, to-lobj2, include subfolders, 1.16.5

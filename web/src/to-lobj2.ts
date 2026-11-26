@@ -10,6 +10,7 @@ import { initPicker, recordRecent } from './picker';
 
 type Jaw = 'upper' | 'lower' | '';
 interface Row {
+  /** 顯示用：遞迴時含相對於目前資料夾的子路徑 */
   name: string;
   full: string;
   size: number;
@@ -109,29 +110,67 @@ function renderCount(): void {
   $<HTMLInputElement>('l2-all').checked = rows.length > 0 && rows.every((r) => r.exists || selected.has(r.full));
 }
 
-async function browse(path: string): Promise<void> {
-  lastSummary = '';
-  try {
-    cur = await listLobj(path);
-  } catch (e) {
-    $('l2-msg').innerHTML = `<span class="bad">${esc(e instanceof Error ? e.message : String(e))}</span>`;
-    return;
-  }
-  recordRecent(cur.path);
-  $<HTMLInputElement>('l2-path').value = cur.path;
-  selected.clear();
-  done.clear();
-  const names = new Set(cur.files.map((f) => f.name.toLowerCase()));
-  rows = cur.files
+/** 一個資料夾的列舉結果轉成列；rel 是相對於目前資料夾的子路徑（空字串 = 目前資料夾本身）。 */
+function rowsOf(l: LobjListing, rel: string): Row[] {
+  const names = new Set(l.files.map((f) => f.name.toLowerCase()));
+  return l.files
     .filter((f) => /\.lobj$/i.test(f.name))
     .map((f) => ({
-      name: f.name,
-      full: join(cur.path, f.name),
+      name: rel ? `${rel}/${f.name}` : f.name,
+      full: join(l.path, f.name),
       size: f.size,
       jaw: guessJaw(f.name),
       exists: names.has(`${f.name}2`.toLowerCase()),
       state: () => '',
     }));
+}
+
+/** 連子資料夾一起列舉（不進入 .zip）；同時最多 8 個請求，找到的數量即時顯示。 */
+async function scanAll(top: LobjListing, gen: number): Promise<Row[]> {
+  const out: Row[] = rowsOf(top, '');
+  const queue: { path: string; rel: string }[] = [];
+  const push = (l: LobjListing, rel: string) => {
+    const zips = new Set(l.zips ?? []);
+    for (const d of l.dirs) if (!zips.has(d)) queue.push({ path: join(l.path, d), rel: rel ? `${rel}/${d}` : d });
+  };
+  push(top, '');
+  const worker = async () => {
+    for (let q = queue.shift(); q && gen === browseGen; q = queue.shift()) {
+      try {
+        const l = await listLobj(q.path);
+        out.push(...rowsOf(l, q.rel));
+        push(l, q.rel);
+        $('l2-msg').textContent = t().l2Scanning(out.length);
+      } catch {
+        /* 讀不了的子資料夾略過 */
+      }
+    }
+  };
+  // queue 會在掃描中增長：反覆啟動 worker 直到清空
+  while (queue.length && gen === browseGen) await Promise.all(Array.from({ length: 8 }, worker));
+  out.sort((a, b) => (a.full < b.full ? -1 : 1));
+  return out;
+}
+
+let browseGen = 0;
+
+async function browse(path: string): Promise<void> {
+  lastSummary = '';
+  const gen = ++browseGen;
+  try {
+    const l = await listLobj(path);
+    if (gen !== browseGen) return;
+    cur = l;
+    recordRecent(cur.path);
+    $<HTMLInputElement>('l2-path').value = cur.path;
+    selected.clear();
+    done.clear();
+    rows = $<HTMLInputElement>('l2-rec').checked ? await scanAll(cur, gen) : rowsOf(cur, '');
+    if (gen !== browseGen) return;
+  } catch (e) {
+    $('l2-msg').innerHTML = `<span class="bad">${esc(e instanceof Error ? e.message : String(e))}</span>`;
+    return;
+  }
   for (const r of rows) if (!r.exists && r.jaw) selected.add(r.full);
   render();
 }
@@ -157,6 +196,7 @@ initPicker({
   isAbort: (e) => e instanceof DOMException && e.name === 'AbortError',
 });
 
+$('l2-rec').addEventListener('change', () => void browse(cur.path));
 $('l2-all').addEventListener('change', (e) => {
   const on = (e.target as HTMLInputElement).checked;
   for (const r of rows) if (!r.exists && r.jaw) on ? selected.add(r.full) : selected.delete(r.full);

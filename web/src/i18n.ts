@@ -241,6 +241,9 @@ const zh = {
   l2DelOldConfirm: (n: number) => `刪除 ${n} 個已有同名 .lobj2 的 .lobj？`,
   l2Deleted: '✓ 已刪除 .lobj',
   l2DelSummary: (ok: number, fail: number) => `刪除完成：成功 ${ok} 個，失敗 ${fail} 個`,
+  l2Recursive: '包含次目錄',
+  l2RecursiveTip: '連子資料夾一起列出所有 .lobj（不進入 .zip）',
+  l2Scanning: (n: number) => `掃描中…已找到 ${n} 個 .lobj`,
   sentenceSep: '。',
 };
 
@@ -474,6 +477,9 @@ const en: Dict = {
   l2DelOldConfirm: (n) => `Delete ${n} .lobj file(s) that already have a .lobj2?`,
   l2Deleted: '✓ .lobj deleted',
   l2DelSummary: (ok, fail) => `Deleted: ${ok} succeeded, ${fail} failed`,
+  l2Recursive: 'Include subfolders',
+  l2RecursiveTip: 'List the .lobj files of all subfolders too (.zip files are not entered)',
+  l2Scanning: (n) => `Scanning… ${n} .lobj found`,
   sentenceSep: '. ',
 };
 
@@ -706,6 +712,9 @@ const vi: Dict = {
   l2DelOldConfirm: (n) => `Xóa ${n} tệp .lobj đã có .lobj2?`,
   l2Deleted: '✓ Đã xóa .lobj',
   l2DelSummary: (ok, fail) => `Đã xóa: ${ok} thành công, ${fail} lỗi`,
+  l2Recursive: 'Gồm thư mục con',
+  l2RecursiveTip: 'Liệt kê cả tệp .lobj trong các thư mục con (không vào tệp .zip)',
+  l2Scanning: (n) => `Đang quét… tìm thấy ${n} tệp .lobj`,
   sentenceSep: '. ',
 };
 
