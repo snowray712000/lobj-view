@@ -1148,6 +1148,7 @@ async function loadJobs(): Promise<void> {
     if (!res.tmux) syncBg.checked = false;
     document.getElementById('sync-bg-wrap')!.title = res.tmux ? t().syncBgTip : t().syncBgNoTmux;
     syncJobsTitle.hidden = !res.jobs.length;
+    (document.getElementById('sync-jobs-clear') as HTMLButtonElement).disabled = !res.jobs.some((j) => j.state !== 'running');
     syncJobsEl.replaceChildren();
     for (const j of res.jobs) {
       const li = document.createElement('li');
@@ -1158,7 +1159,17 @@ async function loadJobs(): Promise<void> {
       text.textContent = `${name} → ${j.dest} · ${st}${j.error ? ` · ${j.error}` : ''}`;
       text.title = `tmux attach -t ${j.session}\n${j.error}`;
       li.appendChild(text);
-      if (j.state === 'running') {
+      if (j.state !== 'running') {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '✕';
+        del.title = t().jobClear;
+        del.addEventListener('click', async () => {
+          await assocCall('/api/sync-job-clear', { id: j.id });
+          void loadJobs();
+        });
+        li.appendChild(del);
+      } else {
         const bar = document.createElement('progress');
         bar.max = 100;
         bar.value = j.progress;
@@ -1240,6 +1251,10 @@ document.getElementById('zip-sync')!.addEventListener('click', () => {
   syncEl.hidden = false;
   void loadJobs();
   if (syncHost.value) void remoteLs(syncDir.value);
+});
+document.getElementById('sync-jobs-clear')!.addEventListener('click', async () => {
+  await assocCall('/api/sync-job-clear', {});
+  void loadJobs();
 });
 document.getElementById('sync-close')!.addEventListener('click', () => {
   syncCtl?.abort(); // 中斷連線 → 後端殺掉 ssh / rsync（背景工作在 tmux 裡，不受影響）

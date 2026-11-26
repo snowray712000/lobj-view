@@ -6,6 +6,7 @@
 //! - `zip-sync` 帶 `background: true`：改在本機的 detached tmux session 裡跑 rsync（見 `start_bg`），立刻回 `{ id, session }`；
 //!   關掉 ssh / 重啟 lobj-view 都不會中斷。`GET /api/sync-jobs` 回傳 `{ tmux, jobs }`（進度與狀態由工作資料夾裡的 log / status 檔判斷），
 //!   `POST /api/sync-job-stop { id }` 結束該 session。工作資料夾在 `data_local_dir/lobj-view/sync-jobs/<id>/`，金鑰密碼只暫存在其中權限 0600 的 `pass`，結束或中止即刪。
+//! - `POST /api/sync-job-clear { id? }`：刪除已結束（完成 / 失敗 / 中止）的工作紀錄；省略 `id` 就清掉全部已結束的，執行中的不動。
 //! - `POST /api/zip-delete` `{ path }`：刪除該 zip（只刪 `.zip` 檔）。
 //!
 //! 都只在伺服器監聽本機位址時開放，且需 `X-Lobj-Requested`。ssh 預設 `BatchMode=yes`：沒有可用的金鑰就直接失敗，
@@ -73,6 +74,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/zip-delete", post(zip_delete))
         .route("/api/sync-jobs", get(sync_jobs))
         .route("/api/sync-job-stop", post(sync_job_stop))
+        .route("/api/sync-job-clear", post(sync_job_clear))
         .with_state(shared)
 }
 
@@ -469,6 +471,35 @@ async fn sync_job_stop(State(shared): State<Arc<Shared>>, headers: HeaderMap, Js
             }
         }
         Ok("{}".to_string())
+    }
+    .await)
+}
+
+/// 清除已結束的工作紀錄（`id` 省略＝全部）。執行中的（沒有 status 檔且 tmux session 還在）一律保留。
+async fn sync_job_clear(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        guard(&shared, &headers)?;
+        let Some(root) = jobs_dir() else { return Ok("{\"removed\":0}".to_string()) };
+        let one = str_of(&body, "id");
+        let ids: Vec<String> = if one.is_empty() {
+            std::fs::read_dir(&root).map(|rd| rd.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default()
+        } else if valid_job_id(&one) {
+            vec![one]
+        } else {
+            return Err(bad("工作 id 不正確"));
+        };
+        let mut removed = 0;
+        for id in ids.into_iter().filter(|i| valid_job_id(i)) {
+            let dir = root.join(&id);
+            if !dir.join("status").exists() && session_alive(&id).await {
+                continue;
+            }
+            drop_secrets(&dir);
+            if std::fs::remove_dir_all(&dir).is_ok() {
+                removed += 1;
+            }
+        }
+        Ok(format!("{{\"removed\":{removed}}}"))
     }
     .await)
 }
