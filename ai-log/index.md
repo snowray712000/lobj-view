@@ -80,3 +80,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: convert-dir, convert_real, batch convert, lobj2, guess_from_path, sets_141, 1.16.1
 - [2026/s4/261126g_to_lobj2_page_v1162.md](2026/s4/261126g_to_lobj2_page_v1162.md) — 1.16.2: standalone `/to-lobj2` page (static HTML, not part of the viewer SPA) for browsing a folder and batch-converting .lobj → .lobj2 via existing APIs.
   Keywords: to-lobj2, web/public, static_handler, lobj-convert, batch UI, 1.16.2
+- [2026/s4/261126h_to_lobj2_vite_v1163.md](2026/s4/261126h_to_lobj2_vite_v1163.md) — 1.16.3: `/to-lobj2` rewritten as a second Vite entry sharing picker, i18n, theme and styles with the viewer; static page removed.
+  Keywords: vite multi-page, rollupOptions.input, to-lobj2.ts, initPicker, l2 i18n keys, 1.16.3

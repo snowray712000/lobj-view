@@ -2,6 +2,10 @@
 
 版本號規則：第 1 碼為大變動；第 2 碼為小變動，偶數 = 開發中、奇數 = 發佈（例如 1.1.1 發佈，之後小修為 1.1.2；繼續開發為 1.2.x，告一段落發佈 1.3.1）。介面預設只顯示「概要」（x.奇數.1），可切換成顯示全部細節。
 
+### 1.16.3
+- 優化: 批次轉檔頁 `/to-lobj2` 改成 Vite 的第二個入口，與檢視器共用資料夾選擇對話框（「瀏覽…」、常用位置 / 釘選 / 最近）、多語言（中 / 英 / 越）、主題與樣式；功能不變（勾選、手動指定上下顎、進度列、可選刪原檔）
+- 工程師筆記: `vite.config.ts` 設 `rollupOptions.input` 兩個入口（`index.html`、`to-lobj2.html`），共用程式碼自動拆成共用 chunk，to-lobj2 不載入 three.js；原 `web/public/to-lobj2.html` 刪除。`picker.ts` 不必改，只用 `initPicker` 的依賴介面接上（selected 集合 = 勾選的檔案），頁面需自帶 picker 的 HTML 區塊。瀏覽器畫面尚未實機點過，檢視器主畫面在新打包下也只確認了資源可取得 #vite #multi-page
+
 ### 1.16.2
 - 新功能: 獨立的批次轉檔頁 `/to-lobj2`（不整合進檢視器主畫面）：瀏覽資料夾、列出 .lobj 與偵測到的上 / 下顎（檔名判斷不出的可手動指定）、勾選後逐一轉成 .lobj2，有進度列；可選轉換成功後刪除原檔，已有 .lobj2 的會標示並略過
 - 工程師筆記: 純靜態頁 `web/public/to-lobj2.html`（vanilla JS，不經 Vite bundle），沿用 `/api/lobj` 與 `/api/lobj-convert`；`static_handler` 把 `/to-lobj2` 對到該檔；轉檔 API 仍限本機。瀏覽器畫面尚未實機點過，只驗證了頁面可取得與轉檔 API #static-page

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 // 開發時：npm run dev（Vite, HMR）+ cargo run（API），/api 由 Vite 轉給 Rust 後端。
@@ -11,6 +12,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // 兩個入口：檢視器主畫面與獨立的批次轉檔頁（/to-lobj2，見 src/to-lobj2.ts）
+    rollupOptions: {
+      input: { main: resolve(__dirname, 'index.html'), 'to-lobj2': resolve(__dirname, 'to-lobj2.html') },
+    },
     target: 'esnext', // WebGPU 初始化使用 top-level await
     chunkSizeWarningLimit: 1500, // three.js 本身約 850 kB
   },

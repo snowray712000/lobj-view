@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lobj-view · to-lobj2</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+  </head>
+  <body>
+    <main id="l2">
+      <h1 data-i18n="l2Title">批次轉 .lobj2</h1>
+      <p class="hint"><span data-i18n="l2Hint"></span> <a href="/" data-i18n="l2Back">回檢視器</a></p>
+      <div class="row">
+        <button id="l2-up" type="button" data-i18n="l2Up">↑ 上一層</button>
+        <button id="picker-open" type="button" data-i18n="pickerBtn" data-i18n-title="pickerBtnTip">瀏覽…</button>
+        <input id="l2-path" type="text" spellcheck="false" data-i18n-placeholder="l2PathPh" />
+        <button id="l2-go" type="button" data-i18n="l2Go">前往</button>
+      </div>
+      <div id="l2-dirs" class="row"></div>
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="l2-all" /></th>
+            <th data-i18n="l2ColName">檔名</th>
+            <th data-i18n="l2ColJaw">上 / 下顎</th>
+            <th class="num" data-i18n="l2ColSize">大小</th>
+            <th data-i18n="l2ColState">狀態</th>
+          </tr>
+        </thead>
+        <tbody id="l2-files"></tbody>
+      </table>
+      <div class="row"><label><input type="checkbox" id="l2-del" /> <span data-i18n="l2Delete"></span></label></div>
+      <div class="row">
+        <button id="l2-run" type="button" class="primary" data-i18n="l2Run">轉換勾選的檔案</button>
+        <span id="l2-count" class="hint"></span>
+      </div>
+      <progress id="l2-bar" value="0" max="1" hidden></progress>
+      <div id="l2-msg"></div>
+    </main>
+    <div id="picker" hidden>
+      <div class="dlg-head"><b data-i18n="pickerTitle">選擇資料夾與檔案</b><label class="pk-alpha" data-i18n-title="pickerAlphaTip" title="背景透明度">◐ <input id="picker-alpha" type="range" min="0.3" max="1" step="0.05" value="0.85" /></label><button id="picker-close" type="button">✕</button></div>
+      <div id="picker-body">
+        <div id="picker-side"></div>
+        <div id="picker-main">
+          <div id="picker-bar">
+            <input id="picker-path" type="text" spellcheck="false" />
+            <button id="picker-pin" type="button">📍</button>
+          </div>
+          <ul id="picker-list"></ul>
+          <div id="picker-info" class="hint"></div>
+        </div>
+      </div>
+      <div id="picker-foot">
+        <span class="hint" data-i18n="pickerHint">點擊加入選取</span>
+        <button id="picker-do-open" type="button" data-i18n="pickerOpen" data-i18n-title="pickerOpenTip">開啟</button>
+      </div>
+    </div>
+    <script type="module" src="/src/to-lobj2.ts"></script>
+  </body>
+</html>
