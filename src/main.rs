@@ -5,6 +5,7 @@ mod stats;
 mod tls;
 mod update;
 mod zipfs;
+mod zipsync;
 
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -128,6 +129,9 @@ enum Cmd {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if zipsync::askpass_mode() {
+        return Ok(()); // 被 ssh 當 SSH_ASKPASS 叫起來：只印出金鑰密碼就結束
+    }
     update::remember_exe();
     let args = Args::parse();
 
@@ -231,7 +235,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/trust", get(trust_page))
         .merge(lobj_api::router(shared.clone()))
         .merge(assoc::router(shared.clone()))
-        .merge(update::router(shared.clone()));
+        .merge(update::router(shared.clone()))
+        .merge(zipsync::router(shared.clone()));
     if let Some(pem) = ca_pem {
         app = app.route(
             "/ca.crt",

@@ -70,3 +70,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: picker.ts, initPicker, /api/places, places_for, pins, recent, localStorage, resize, ResizeObserver, --pk-alpha, color-mix, box-sizing, 1.12.3
 - [2026/s4/261126b_zip_folder_button_v1141.md](2026/s4/261126b_zip_folder_button_v1141.md) — 1.14.1: "Zip folder" button; `POST /api/zip-dir` writes `<folder>.zip` beside the folder (no download, local-only, 409 + overwrite confirm, zips all files). rsync-to-another-machine button is the next step.
   Keywords: zip-dir, zip_dir, zip_add_dir, ZipWriter, .partial, overwrite, 409, guard_with, X-Lobj-Requested, zipDir, rsync, ssh, 1.14.1
+- [2026/s4/261126c_zip_sync_rsync_v1142.md](2026/s4/261126c_zip_sync_rsync_v1142.md) — 1.14.2: click selects / double-click enters folders and .zip; selected .zip gets "sync to…" (rsync over ssh with remote folder browser, optional passphrase/password via SSH_ASKPASS = own exe) and "delete".
+  Keywords: zipsync.rs, remote-ls, zip-sync, zip-delete, rsync, ssh, BatchMode, SSH_ASKPASS, SSH_ASKPASS_REQUIRE, askpass_mode, passphrase, accept-new, selectDir, writable, test -w, 1.14.2

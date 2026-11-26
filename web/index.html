@@ -49,6 +49,11 @@
           </div>
           <div class="hint" data-i18n="selectHint">Ctrl/⌘ 點擊加選、Shift 點擊範圍選取、雙擊只開這一個</div>
           <ul id="files"></ul>
+          <div id="zip-actions" hidden>
+            <span id="zip-sel"></span>
+            <button id="zip-sync" type="button" data-i18n="zipSync" data-i18n-title="zipSyncTip" title="用 rsync（ssh）把所選的 zip 傳到另一台電腦">同步到…</button>
+            <button id="zip-del" type="button" data-i18n="zipDel" data-i18n-title="zipDelTip" title="刪除所選的 zip 檔（無法復原）">刪除</button>
+          </div>
           <div id="info"></div>
         </div>
       </div>
@@ -79,6 +84,21 @@
     <div id="versions" hidden>
       <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> <span data-i18n="details">細節</span></label><button id="versions-close" type="button">✕</button></div>
       <div id="versions-body"></div>
+    </div>
+    <div id="sync" hidden>
+      <div class="dlg-head"><b data-i18n="syncTitle">同步到另一台電腦</b><button id="sync-close" type="button">✕</button></div>
+      <div id="sync-body">
+        <div id="sync-file"></div>
+        <div class="sync-row">
+          <input id="sync-host" type="text" spellcheck="false" placeholder="user@host" />
+          <button id="sync-connect" type="button" data-i18n="syncConnect">連線</button>
+        </div>
+        <div class="sync-row"><input id="sync-pass" type="password" autocomplete="off" data-i18n-placeholder="syncPassPh" placeholder="密碼（金鑰密碼或 ssh 登入密碼；有 ssh-agent / 免密碼金鑰可留空）" /></div>
+        <div class="sync-row"><input id="sync-dir" type="text" spellcheck="false" data-i18n-placeholder="syncDirPh" placeholder="遠端資料夾（空白＝家目錄），Enter 列出" /></div>
+        <ul id="sync-list"></ul>
+        <div id="sync-msg" class="msg"></div>
+        <div class="sync-row"><button id="sync-go" type="button" data-i18n="syncGo">同步到這個資料夾</button></div>
+      </div>
     </div>
     <div id="assoc" hidden>
       <div class="dlg-head"><b data-i18n="assocTitle">預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>

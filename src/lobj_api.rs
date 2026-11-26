@@ -146,7 +146,7 @@ pub fn is_lobj_name(name: &str) -> bool {
     lower.ends_with(".lobj") || lower.ends_with(".lobj2") || lower.ends_with(".stl") || lower.ends_with(".obj") || lower.ends_with(".ply")
 }
 
-type ApiErr = (StatusCode, std::borrow::Cow<'static, str>);
+pub(crate) type ApiErr = (StatusCode, std::borrow::Cow<'static, str>);
 
 fn err(code: StatusCode, m: &'static str) -> ApiErr {
     (code, m.into())
@@ -171,12 +171,12 @@ fn zip_err(e: ZipError) -> ApiErr {
 /// 解析結果：`real` 是磁碟上的真實路徑（可能在 zip 快取內），`virt` 是前端看到的路徑（`/` 分隔，
 /// 相對 `--dir`，穿過 zip 時形如 `a.zip/sub`），`base` 是這個路徑所屬的限制範圍（`--dir` 或某個 zip 的快取）。
 #[derive(Debug)]
-struct Resolved {
-    real: PathBuf,
-    virt: String,
+pub(crate) struct Resolved {
+    pub(crate) real: PathBuf,
+    pub(crate) virt: String,
     base: PathBuf,
     /// 是否位於 zip 解壓快取內（zip 內的檔案不能轉檔）
-    in_zip: bool,
+    pub(crate) in_zip: bool,
 }
 
 /// 前端看到的路徑：在 `root` 之內是相對路徑，否則（只有不限制範圍時才會發生）是絕對路徑，一律 `/` 分隔。
@@ -280,7 +280,7 @@ fn resolve(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Resolved, Ap
 }
 
 /// `unrestricted`：不限制在 `root` 內（伺服器只監聽本機位址時）。
-fn resolve_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool) -> Result<Resolved, ApiErr> {
+pub(crate) fn resolve_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool) -> Result<Resolved, ApiErr> {
     let s = input.trim().trim_matches('"').replace('\\', "/");
     let rel = s.trim_start_matches('/');
     let mut candidates = Vec::new();
@@ -581,7 +581,7 @@ fn encode(path: &Path, jaw: Option<Jaw>) -> Result<(Vec<u8>, bool), LobjError> {
     Ok((lobj::format::to_bytes(&obj)?, file_has_colors))
 }
 
-fn json_string(s: &str) -> String {
+pub(crate) fn json_string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {

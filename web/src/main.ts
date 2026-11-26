@@ -1090,6 +1090,126 @@ document.getElementById('busy-cancel')!.addEventListener('click', () => {
 
 let browseCtl: AbortController | null = null;
 
+// --- 選取資料夾 / .zip：選到磁碟上的 .zip 時顯示「同步到…」「刪除」 ---
+let selDir: string | null = null;
+const zipActionsEl = document.getElementById('zip-actions')!;
+
+function selectDir(full: string | null, isZip: boolean): void {
+  selDir = full === selDir ? null : full; // 再點一次取消
+  for (const li of filesEl.querySelectorAll<HTMLLIElement>('li[data-dir]')) li.classList.toggle('sel', li.dataset.dir === selDir);
+  // 目前就在某個 zip 裡面時，裡面的 zip 是快取副本，不能同步或刪除
+  zipActionsEl.hidden = !(selDir && isZip && !/\.zip(\/|$)/i.test(curDir));
+  document.getElementById('zip-sel')!.textContent = selDir ? selDir.split('/').pop()! : '';
+}
+
+document.getElementById('zip-del')!.addEventListener('click', async () => {
+  if (!selDir || !confirm(t().zipDelConfirm(selDir.split('/').pop()!))) return;
+  const r = await assocCall('/api/zip-delete', { path: selDir });
+  if (!r.ok) {
+    infoEl.textContent = t().failed(await r.text());
+    return;
+  }
+  await browse(curDir);
+});
+
+// --- 同步到另一台電腦（rsync over ssh）：輸入 user@host（要有 ssh 金鑰，不問密碼），挑遠端資料夾 ---
+const syncEl = document.getElementById('sync')!;
+const syncHost = document.getElementById('sync-host') as HTMLInputElement;
+const syncPass = document.getElementById('sync-pass') as HTMLInputElement; // 只留在這個分頁的記憶體，不存 localStorage、不存伺服器
+const syncDir = document.getElementById('sync-dir') as HTMLInputElement;
+const syncList = document.getElementById('sync-list')!;
+const syncMsg = document.getElementById('sync-msg')!;
+const syncGo = document.getElementById('sync-go') as HTMLButtonElement;
+let syncCtl: AbortController | null = null;
+let syncZip = '';
+
+function store(k: string, v?: string): string {
+  try {
+    if (v !== undefined) localStorage.setItem(k, v);
+    return localStorage.getItem(k) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** 認證失敗時多提醒一句：金鑰有密碼的話在上方輸入金鑰密碼。 */
+function syncErr(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return t().failed(m) + (/permission denied \((publickey|password|keyboard)/i.test(m) ? `\n${t().syncPassHint}` : '');
+}
+
+async function remoteLs(path: string): Promise<void> {
+  syncCtl?.abort();
+  const ctl = (syncCtl = new AbortController());
+  syncMsg.textContent = t().syncListing;
+  try {
+    const r = await fetch('/api/remote-ls', {
+      method: 'POST',
+      headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: syncHost.value, path, passphrase: syncPass.value }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const res = (await r.json()) as { path: string; writable: boolean; dirs: string[] };
+    syncDir.value = res.path;
+    store('lobj-view-sync-host', syncHost.value);
+    store('lobj-view-sync-dir', res.path);
+    syncList.replaceChildren();
+    const add = (label: string, to: string) => {
+      const li = document.createElement('li');
+      li.textContent = label;
+      li.addEventListener('click', () => void remoteLs(to));
+      syncList.appendChild(li);
+    };
+    if (res.path !== '/') add('📁 ..', res.path.replace(/\/[^/]*$/, '') || '/');
+    for (const d of res.dirs) add(`📁 ${d}`, `${res.path.replace(/\/$/, '')}/${d}`);
+    syncGo.disabled = !res.writable;
+    syncMsg.textContent = res.writable ? '' : t().syncReadOnly;
+  } catch (e) {
+    if (!isAbort(e)) syncMsg.textContent = syncErr(e);
+  }
+}
+
+document.getElementById('zip-sync')!.addEventListener('click', () => {
+  if (!selDir) return;
+  syncZip = selDir;
+  document.getElementById('sync-file')!.textContent = `📦 ${selDir}`;
+  syncHost.value ||= store('lobj-view-sync-host');
+  syncDir.value ||= store('lobj-view-sync-dir');
+  syncMsg.textContent = '';
+  syncEl.hidden = false;
+  if (syncHost.value) void remoteLs(syncDir.value);
+});
+document.getElementById('sync-close')!.addEventListener('click', () => {
+  syncCtl?.abort(); // 中斷連線 → 後端殺掉 ssh / rsync
+  syncEl.hidden = true;
+});
+document.getElementById('sync-connect')!.addEventListener('click', () => void remoteLs(syncDir.value));
+for (const el of [syncHost, syncPass, syncDir]) el.addEventListener('keydown', (e) => e.key === 'Enter' && void remoteLs(syncDir.value));
+syncGo.addEventListener('click', async () => {
+  syncCtl?.abort();
+  const ctl = (syncCtl = new AbortController());
+  syncGo.disabled = true;
+  syncMsg.textContent = t().syncRunning;
+  try {
+    const r = await fetch('/api/zip-sync', {
+      method: 'POST',
+      headers: { 'X-Lobj-Requested': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: syncZip, host: syncHost.value, dir: syncDir.value, passphrase: syncPass.value }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const res = (await r.json()) as { dest: string };
+    store('lobj-view-sync-host', syncHost.value);
+    store('lobj-view-sync-dir', syncDir.value);
+    syncMsg.textContent = t().syncDone(res.dest);
+  } catch (e) {
+    if (!isAbort(e)) syncMsg.textContent = syncErr(e);
+  } finally {
+    syncGo.disabled = false;
+  }
+});
+
 // 壓縮目前資料夾：後端在該資料夾的同層寫出「資料夾名.zip」（之後再用它同步到別台電腦）
 document.getElementById('zip-dir')!.addEventListener('click', async () => {
   const btn = document.getElementById('zip-dir') as HTMLButtonElement;
@@ -1128,12 +1248,21 @@ async function browse(path: string): Promise<void> {
     recordRecent(curDir);
     pathEl.value = l.path ? (l.path.endsWith('/') ? l.path : `${l.path}/`) : '';
     filesEl.replaceChildren();
+    selectDir(null, false);
     if (l.parent) {
       const up = l.up ?? (curDir.includes('/') ? curDir.slice(0, curDir.lastIndexOf('/')) : '');
       addItem('📁 ..', 'dir', () => void browse(up));
     }
     const zips = new Set(l.zips ?? []);
-    for (const d of l.dirs) addItem(`${zips.has(d) ? '📦' : '📁'} ${d}`, 'dir', () => void browse(join(curDir, d)));
+    for (const d of l.dirs) {
+      // 資料夾 / zip：單擊＝選取，雙擊＝進入（同檔案清單的操作習慣）
+      const full = join(curDir, d);
+      const li = addItem(`${zips.has(d) ? '📦' : '📁'} ${d}`, 'dir', (e) => {
+        if (e.detail <= 1) selectDir(full, zips.has(d));
+      });
+      li.dataset.dir = full;
+      li.addEventListener('dblclick', () => void browse(full));
+    }
     curFiles = l.files.map((f) => join(curDir, f.name));
     for (const f of l.files) {
       const full = join(curDir, f.name);
