@@ -1,4 +1,5 @@
 mod assoc;
+mod convert_dir;
 mod instance;
 mod lobj_api;
 mod stats;
@@ -116,6 +117,17 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// 把資料夾（含子資料夾）下所有檔名明確標示上顎 / 下顎（upper / lower）的 .lobj 轉成同名 .lobj2。
+    ConvertDir {
+        /// 要轉換的資料夾。
+        dir: PathBuf,
+        /// 轉換成功（寫出後讀回驗證）後刪除原本的 .lobj；預設保留。
+        #[arg(long)]
+        delete_old: bool,
+        /// 只列出會做什麼，不寫入任何檔案。
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// 產生本機 CA 與憑證，並顯示其他裝置該怎麼信任它。
     Trust {
         /// 同時把 CA 匯入這台機器的信任清單（Windows / macOS）。
@@ -137,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
 
     match args.cmd {
         Some(Cmd::Update { check }) => return update::run_cli(check),
+        Some(Cmd::ConvertDir { dir, delete_old, dry_run }) => return convert_dir::run(&dir, delete_old, dry_run),
         Some(Cmd::Trust { install, sans }) => return run_trust(install, &sans),
         Some(Cmd::Register { ext }) => {
             let exts = if ext.is_empty() {

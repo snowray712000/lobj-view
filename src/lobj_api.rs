@@ -506,6 +506,36 @@ fn copy_times(from: &std::fs::Metadata, to: &Path) -> std::io::Result<()> {
     std::fs::OpenOptions::new().write(true).open(to)?.set_times(t)
 }
 
+/// 把一個實體檔案（`.lobj` / `.stl` / `.ply` / `.obj`）轉成同資料夾、同主檔名的 `.lobj2`；回傳新檔路徑。
+/// 供 `/api/lobj-convert` 與命令列 `convert-dir` 共用。
+pub(crate) fn convert_real(real: &Path, jaw: Option<Jaw>, delete_old: bool) -> Result<PathBuf, (StatusCode, String)> {
+    let r_real = real;
+    // 只換副檔名，不改檔名（.stl / .ply / .obj 沒有 label，轉出的 .lobj2 labels 全是 -1）
+    let new = r_real.with_extension("lobj2");
+    if new.exists() {
+        return Err((StatusCode::CONFLICT, "同名的 .lobj2 已存在，未轉檔".to_string()));
+    }
+    let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    let le = |e: LobjError| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string());
+    let meta = std::fs::metadata(&r_real).map_err(io)?; // 先取時間：讀檔會更動存取時間
+    let obj = lobj::load(&r_real, jaw).map_err(le)?;
+    let (nv, nt) = (obj.vertices.len(), obj.triangles.len());
+    let cleanup = |m: (StatusCode, String)| {
+        std::fs::remove_file(&new).ok();
+        m
+    };
+    lobj::save(&new, &obj).map_err(|e| cleanup(le(e)))?;
+    copy_times(&meta, &new).map_err(|e| cleanup(io(e)))?;
+    let back = lobj::load(&new, None).map_err(|e| cleanup(le(e)))?;
+    if back.vertices.len() != nv || back.triangles.len() != nt || back.labels != obj.labels {
+        return Err(cleanup((StatusCode::INTERNAL_SERVER_ERROR, "轉出的檔案與原檔不一致，已放棄".into())));
+    }
+    if delete_old {
+        std::fs::remove_file(&r_real).map_err(io)?;
+    }
+    Ok(new)
+}
+
 /// 舊 `.lobj`（或 `.stl` / `.ply` / `.obj`）→ 同資料夾、同主檔名的 `.lobj2`。body：`{ "path": 相對 --dir 的路徑, "jaw": "upper"|"lower"|null, "delete_old": bool }`。
 /// 新檔已存在就拒絕（不覆蓋）；寫完會重新讀回比對頂點 / 三角形數，確認無誤才依 `delete_old` 刪舊檔。
 async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
@@ -534,29 +564,7 @@ async fn convert(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
         if !r.real.is_file() || !matches!(ext.as_str(), "lobj" | "stl" | "ply" | "obj") {
             return Err(bad(StatusCode::BAD_REQUEST, "只能轉換 .lobj / .stl / .ply / .obj 檔案"));
         }
-        // 只換副檔名，不改檔名（.stl / .ply / .obj 沒有 label，轉出的 .lobj2 labels 全是 -1）
-        let new = r.real.with_extension("lobj2");
-        if new.exists() {
-            return Err(bad(StatusCode::CONFLICT, "同名的 .lobj2 已存在，未轉檔"));
-        }
-        let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
-        let le = |e: LobjError| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string());
-        let meta = std::fs::metadata(&r.real).map_err(io)?; // 先取時間：讀檔會更動存取時間
-        let obj = lobj::load(&r.real, jaw).map_err(le)?;
-        let (nv, nt) = (obj.vertices.len(), obj.triangles.len());
-        let cleanup = |m: (StatusCode, String)| {
-            std::fs::remove_file(&new).ok();
-            m
-        };
-        lobj::save(&new, &obj).map_err(|e| cleanup(le(e)))?;
-        copy_times(&meta, &new).map_err(|e| cleanup(io(e)))?;
-        let back = lobj::load(&new, None).map_err(|e| cleanup(le(e)))?;
-        if back.vertices.len() != nv || back.triangles.len() != nt || back.labels != obj.labels {
-            return Err(cleanup((StatusCode::INTERNAL_SERVER_ERROR, "轉出的檔案與原檔不一致，已放棄".into())));
-        }
-        if delete_old {
-            std::fs::remove_file(&r.real).map_err(io)?;
-        }
+        let new = convert_real(&r.real, jaw, delete_old)?;
         Ok(virt_of(&root, &new))
     };
     match tokio::task::spawn_blocking(job).await {

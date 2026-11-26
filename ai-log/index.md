@@ -76,3 +76,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: NDJSON, progress, ZipProgress, dir_bytes, rsync_run, parse_progress, --info=progress2, readStream, op-progress, sync-bar, kill_on_drop, 1.14.3
 - [2026/s4/261126e_tmux_background_sync_v1144.md](2026/s4/261126e_tmux_background_sync_v1144.md) — 1.14.4: rsync can run in a detached local tmux session (survives closing ssh / restarting lobj-view); job folder with run.sh/log/status, jobs list + stop in the sync dialog.
   Keywords: tmux, new-session, has-session, kill-session, sync-jobs, sync-job-stop, start_bg, run.sh, tee, status, rc, askpass.sh, pass 0600, parse_progress, loadJobs, 1.14.4
+- [2026/s4/261126f_convert_dir_cli_v1161.md](2026/s4/261126f_convert_dir_cli_v1161.md) — 1.16.1: `lobj-view convert-dir` batch-converts upper/lower-named .lobj to .lobj2 (recursive, keep-old default, --dry-run/--delete-old); shared `convert_real`; trial on sets_141 converted 434/434.
+  Keywords: convert-dir, convert_real, batch convert, lobj2, guess_from_path, sets_141, 1.16.1
