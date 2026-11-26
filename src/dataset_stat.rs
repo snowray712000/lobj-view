@@ -1,5 +1,6 @@
 //! 資料集統計頁（`/stat`）的後端：
 //!   - `GET  /api/stat-case?path=<病例資料夾>`：讀該資料夾內所有 `.lobj2`，回傳有無上 / 下顎與出現過哪些 FDI。
+//!   - `GET  /api/stat-csv?path=<資料集資料夾>`：回傳該資料夾裡既有的 `stat.csv` 原文（沒有就 404），讓前端直接載入而不必重算。
 //!   - `POST /api/stat-save`：把前端組好的 CSV 寫成 `<資料集資料夾>/stat.csv`（UTF-8，含 BOM；只限本機）。
 //!
 //! 一個病例資料夾（例如 `sets141_001`）可能有 2 或 4 個檔（`1_lower` / `1_lower_study` …），仍算一個病例：
@@ -29,6 +30,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
     Router::new()
         .route("/api/stat-case", get(stat_case))
         .route("/api/stat-save", post(stat_save))
+        .route("/api/stat-csv", get(stat_csv))
         .with_state(shared)
 }
 
@@ -178,6 +180,29 @@ async fn stat_save(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(b
     };
     match tokio::task::spawn_blocking(job).await {
         Ok(Ok(p)) => ([(header::CONTENT_TYPE, "application/json")], serde_json::json!({ "path": p }).to_string()).into_response(),
+        Ok(Err((c, m))) => (c, m).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn stat_csv(State(shared): State<Arc<Shared>>, Query(q): Query<HashMap<String, String>>) -> Response {
+    let root = shared.root();
+    let unrestricted = shared.local_only();
+    let input = q.get("path").cloned().unwrap_or_default();
+    let job = move || -> Result<String, (StatusCode, String)> {
+        let r = resolve_ex(&root, &input, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
+        if r.in_zip || !r.real.is_dir() {
+            return Err((StatusCode::BAD_REQUEST, "必須是磁碟上的資料夾".into()));
+        }
+        let f = r.real.join("stat.csv");
+        match std::fs::read(&f) {
+            Ok(b) => Ok(String::from_utf8_lossy(&b).into_owned()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err((StatusCode::NOT_FOUND, "沒有 stat.csv".into())),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        }
+    };
+    match tokio::task::spawn_blocking(job).await {
+        Ok(Ok(t)) => ([(header::CONTENT_TYPE, "text/csv; charset=utf-8")], t).into_response(),
         Ok(Err((c, m))) => (c, m).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

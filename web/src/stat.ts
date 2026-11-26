@@ -36,30 +36,133 @@ applyStatic();
 
 let cur: LobjListing = { path: '', parent: false, up: null, dirs: [], zips: [], files: [], selected: null } as unknown as LobjListing;
 let rows: CaseRow[] = [];
+/** 目前資料夾已有 stat.csv（顯示的是它的內容，按鈕變成「重新產生」） */
+let hasCsv = false;
+/** rows 是剛統計出來、尚未輸出的結果（才允許輸出 stat.csv） */
+let fresh = false;
+let transposed = false;
+try {
+  transposed = localStorage.getItem('lobj-view-stat-transposed') === '1';
+} catch {
+  /* 預設直式 */
+}
 let busy = false;
 let msg = '';
 let browseGen = 0;
 
 const defaultName = (path: string) => (path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '').replace(/^ACom_/i, '');
 
+/** 統計項目：upper、lower，再來每個 FDI；n = 有這一項的病例數 */
+function items(): { label: string; n: number }[] {
+  return [
+    { label: 'upper', n: rows.filter((r) => r.upper).length },
+    { label: 'lower', n: rows.filter((r) => r.lower).length },
+    ...FDI.map((f) => ({ label: String(f), n: rows.filter((r) => r.fdi.has(f)).length })),
+  ];
+}
+
 function render(): void {
   const tt = t();
-  const head = `<tr><th>${esc(tt.stColCase)}</th><th>upper</th><th>lower</th>${FDI.map((f) => `<th>${f}</th>`).join('')}<th>${esc(tt.stColRemark)}</th></tr>`;
-  const body = rows
-    .map((r) => {
-      const cell = (v: boolean) => `<td class="c ${v ? '' : 'z'}">${v ? 1 : 0}</td>`;
-      return `<tr><td>${esc(r.name)}</td>${cell(r.upper)}${cell(r.lower)}${FDI.map((f) => cell(r.fdi.has(f))).join('')}<td class="${r.remark ? 'warn' : ''}">${esc(r.remark)}</td></tr>`;
-    })
-    .join('');
-  $('st-table').innerHTML = rows.length ? head + body : '';
+  const total = rows.length;
+  const pct = (n: number) => (total ? `${((n * 100) / total).toFixed(1)}` : '');
+  const its = items();
+  const z = (n: number) => (n ? '' : ' z');
+  $('st-table').innerHTML = !total
+    ? ''
+    : transposed
+      ? // 橫式（電腦）：項目橫排，兩列 = 病例數、%
+        `<tr><th class="hd">${esc(tt.stColItem)}</th>${its.map((i) => `<th>${i.label}</th>`).join('')}</tr>` +
+        `<tr><td class="hd">${esc(tt.stColCount)}</td>${its.map((i) => `<td class="n${z(i.n)}">${i.n}</td>`).join('')}</tr>` +
+        `<tr><td class="hd">${esc(tt.stColPct)}</td>${its.map((i) => `<td class="n${z(i.n)}">${pct(i.n)}</td>`).join('')}</tr>`
+      : // 直式（手機）：每個項目一列
+        `<tr><th>${esc(tt.stColItem)}</th><th>${esc(tt.stColCount)}</th><th>${esc(tt.stColPct)}</th></tr>` +
+        its.map((i) => `<tr><td class="hd">${i.label}</td><td class="n${z(i.n)}">${i.n}</td><td class="n${z(i.n)}">${pct(i.n)}</td></tr>`).join('');
+  const withRemark = rows.filter((r) => r.remark);
+  $('st-remarks').innerHTML = withRemark.length
+    ? `<b>${esc(tt.stRemarks)}</b><ul>${withRemark.map((r) => `<li>${esc(r.name)}：<span class="warn">${esc(r.remark)}</span></li>`).join('')}</ul>`
+    : '';
+  const zips = new Set(cur.zips ?? []);
+  $('l2-dirs').replaceChildren(
+    ...cur.dirs
+      .filter((d) => !zips.has(d))
+      .map((d) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = `📁 ${d}`;
+        b.addEventListener('click', () => void browse(join(cur.path, d)));
+        return b;
+      }),
+  );
   $('l2-msg').textContent = msg;
   $<HTMLButtonElement>('l2-up').disabled = !cur.parent;
-  $<HTMLButtonElement>('st-run').disabled = busy;
-  $<HTMLButtonElement>('st-save').disabled = busy || !rows.length;
+  const run = $<HTMLButtonElement>('st-run');
+  run.textContent = hasCsv ? tt.stRerun : tt.stRun;
+  run.title = hasCsv ? tt.stRerunTip : '';
+  run.disabled = busy;
+  $<HTMLButtonElement>('st-save').disabled = busy || !fresh || !rows.length;
+  $<HTMLButtonElement>('st-tr').disabled = !rows.length;
+}
+
+/** 解析 CSV（支援雙引號欄位、欄內逗號 / 換行、"" 跳脫；去掉 BOM） */
+function parseCsv(text: string): string[][] {
+  const out: string[][] = [];
+  let row: string[] = [];
+  let f = '';
+  let q = false;
+  const src = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (q) {
+      if (c === '"') {
+        if (src[i + 1] === '"') (f += '"'), i++;
+        else q = false;
+      } else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') (row.push(f), (f = ''));
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && src[i + 1] === '\n') i++;
+      row.push(f);
+      f = '';
+      if (row.length > 1 || row[0] !== '') out.push(row);
+      row = [];
+    } else f += c;
+  }
+  if (f !== '' || row.length) {
+    row.push(f);
+    out.push(row);
+  }
+  return out;
+}
+
+/** 讀取資料夾裡既有的 stat.csv；沒有就回 null */
+async function loadCsv(path: string): Promise<{ name: string; rows: CaseRow[] } | null> {
+  const res = await fetch(`/api/stat-csv?path=${encodeURIComponent(path)}`);
+  if (!res.ok) return null;
+  const tbl = parseCsv(await res.text());
+  if (tbl.length < 1) return null;
+  const col = new Map(tbl[0].map((h, i) => [h.trim(), i] as const));
+  const ci = col.get('case name');
+  if (ci === undefined) return null;
+  const flag = (r: string[], k: string | number) => {
+    const i = col.get(String(k));
+    return i !== undefined && r[i]?.trim() === '1';
+  };
+  const di = col.get('dataset_name');
+  const ri = col.get('remark');
+  const data = tbl.slice(1).map((r) => ({
+    name: r[ci] ?? '',
+    upper: flag(r, 'upper'),
+    lower: flag(r, 'lower'),
+    fdi: new Set(FDI.filter((f) => flag(r, f))),
+    remark: ri === undefined ? '' : (r[ri] ?? ''),
+  }));
+  return { name: (di !== undefined && tbl[1]?.[di]) || '', rows: data };
 }
 
 async function browse(path: string): Promise<void> {
   const gen = ++browseGen;
+  busy = false;
+  $<HTMLProgressElement>('l2-bar').hidden = true;
   try {
     const l = await listLobj(path);
     if (gen !== browseGen) return;
@@ -74,6 +177,22 @@ async function browse(path: string): Promise<void> {
   $<HTMLInputElement>('st-name').value = defaultName(cur.path);
   rows = [];
   msg = '';
+  fresh = false;
+  hasCsv = false;
+  render();
+  // 這個資料夾已有 stat.csv → 直接載入，不必重算
+  try {
+    const c = await loadCsv(cur.path);
+    if (gen !== browseGen) return;
+    if (c) {
+      hasCsv = true;
+      rows = c.rows;
+      if (c.name) $<HTMLInputElement>('st-name').value = c.name;
+      msg = t().stLoaded(rows.length);
+    }
+  } catch {
+    /* 讀不到就當作沒有 */
+  }
   render();
 }
 
@@ -135,9 +254,20 @@ $('st-run').addEventListener('click', async () => {
     bar.value = i + 1;
   }
   rows = out;
+  fresh = true;
   busy = false;
   bar.hidden = true;
   msg = t().stSummary(rows.length, rows.filter((r) => r.upper).length, rows.filter((r) => r.lower).length, rows.filter((r) => r.remark).length);
+  render();
+});
+
+$('st-tr').addEventListener('click', () => {
+  transposed = !transposed;
+  try {
+    localStorage.setItem('lobj-view-stat-transposed', transposed ? '1' : '0');
+  } catch {
+    /* 只是記住偏好 */
+  }
   render();
 });
 
@@ -150,6 +280,8 @@ $('st-save').addEventListener('click', async () => {
     });
     if (!res.ok) throw new Error(await res.text());
     msg = t().stSaved(((await res.json()) as { path: string }).path);
+    hasCsv = true;
+    fresh = false;
   } catch (e) {
     msg = e instanceof Error ? e.message : String(e);
   }

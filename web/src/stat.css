@@ -27,3 +27,17 @@
   min-width: 160px;
   flex: none;
 }
+#st-table td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#st-table td.hd,
+#st-table th.hd {
+  font-weight: 600;
+}
+#st-remarks {
+  margin-top: 12px;
+}
+#st-remarks li {
+  margin: 2px 0;
+}

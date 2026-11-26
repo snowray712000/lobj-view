@@ -88,3 +88,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: recursive scan, scanAll, to-lobj2, include subfolders, 1.16.5
 - [2026/s4/261126k_stat_page_v1172.md](2026/s4/261126k_stat_page_v1172.md) — 1.17.2: `/stat` page + `/api/stat-case`, `/api/stat-save`; per-case upper/lower + FDI 0/1 matrix to stat.csv (UTF-8 BOM) in the dataset folder.
   Keywords: stat, dataset_stat.rs, stat.csv, FDI, stat-case, stat-save, 1.17.2
+- [2026/s4/261126l_stat_view_load_v1182.md](2026/s4/261126l_stat_view_load_v1182.md) — 1.18.2: `/stat` shows per-item counts/% (vertical, transposable), loads existing stat.csv via `/api/stat-csv`, button becomes "regenerate".
+  Keywords: stat, stat-csv, parseCsv, transpose, regenerate, 1.18.2

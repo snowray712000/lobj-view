@@ -16,16 +16,19 @@
         <input id="l2-path" type="text" spellcheck="false" data-i18n-placeholder="l2PathPh" />
         <button id="l2-go" type="button" data-i18n="l2Go">前往</button>
       </div>
+      <div id="l2-dirs" class="row"></div>
       <div class="row">
         <label data-i18n-title="stNameTip"><span data-i18n="stName">資料集名稱</span> <input id="st-name" type="text" spellcheck="false" /></label>
         <button id="st-run" type="button" class="primary" data-i18n="stRun">統計</button>
         <button id="st-save" type="button" data-i18n="stSave" disabled>輸出 stat.csv</button>
+        <button id="st-tr" type="button" data-i18n="stTranspose" data-i18n-title="stTransposeTip">⇄ 轉置</button>
       </div>
       <progress id="l2-bar" value="0" max="1" hidden></progress>
       <div id="l2-msg"></div>
       <div id="st-wrap">
         <table id="st-table"></table>
       </div>
+      <div id="st-remarks"></div>
     </main>
     <div id="picker" hidden>
       <div class="dlg-head"><b data-i18n="pickerTitle">選擇資料夾與檔案</b><label class="pk-alpha" data-i18n-title="pickerAlphaTip" title="背景透明度">◐ <input id="picker-alpha" type="range" min="0.3" max="1" step="0.05" value="0.85" /></label><button id="picker-close" type="button">✕</button></div>
