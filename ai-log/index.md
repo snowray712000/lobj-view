@@ -72,3 +72,5 @@ One entry per session log. Paths are relative to this file.
   Keywords: zip-dir, zip_dir, zip_add_dir, ZipWriter, .partial, overwrite, 409, guard_with, X-Lobj-Requested, zipDir, rsync, ssh, 1.14.1
 - [2026/s4/261126c_zip_sync_rsync_v1142.md](2026/s4/261126c_zip_sync_rsync_v1142.md) — 1.14.2: click selects / double-click enters folders and .zip; selected .zip gets "sync to…" (rsync over ssh with remote folder browser, optional passphrase/password via SSH_ASKPASS = own exe) and "delete".
   Keywords: zipsync.rs, remote-ls, zip-sync, zip-delete, rsync, ssh, BatchMode, SSH_ASKPASS, SSH_ASKPASS_REQUIRE, askpass_mode, passphrase, accept-new, selectDir, writable, test -w, 1.14.2
+- [2026/s4/261126d_progress_bars_v1143.md](2026/s4/261126d_progress_bars_v1143.md) — 1.14.3: progress bars for zip-folder and rsync sync; endpoints stream NDJSON (progress lines, final done/error), rsync `--info=progress2` parsed.
+  Keywords: NDJSON, progress, ZipProgress, dir_bytes, rsync_run, parse_progress, --info=progress2, readStream, op-progress, sync-bar, kill_on_drop, 1.14.3

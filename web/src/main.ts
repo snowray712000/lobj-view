@@ -1119,6 +1119,7 @@ const syncPass = document.getElementById('sync-pass') as HTMLInputElement; // �
 const syncDir = document.getElementById('sync-dir') as HTMLInputElement;
 const syncList = document.getElementById('sync-list')!;
 const syncMsg = document.getElementById('sync-msg')!;
+const syncBar = document.getElementById('sync-bar') as HTMLProgressElement;
 const syncGo = document.getElementById('sync-go') as HTMLButtonElement;
 let syncCtl: AbortController | null = null;
 let syncZip = '';
@@ -1199,7 +1200,11 @@ syncGo.addEventListener('click', async () => {
       signal: ctl.signal,
     });
     if (!r.ok) throw new Error(await r.text());
-    const res = (await r.json()) as { dest: string };
+    const res = await readStream<{ dest: string }>(r, (p) => {
+      syncBar.hidden = false;
+      syncBar.value = p.progress;
+      syncMsg.textContent = `${t().syncRunning} ${p.progress}%${p.speed ? `  ${p.speed}` : ''}`;
+    });
     store('lobj-view-sync-host', syncHost.value);
     store('lobj-view-sync-dir', syncDir.value);
     syncMsg.textContent = t().syncDone(res.dest);
@@ -1207,8 +1212,37 @@ syncGo.addEventListener('click', async () => {
     if (!isAbort(e)) syncMsg.textContent = syncErr(e);
   } finally {
     syncGo.disabled = false;
+    syncBar.hidden = true;
   }
 });
+
+const opProgress = document.getElementById('op-progress')!;
+const opBar = document.getElementById('op-bar') as HTMLProgressElement;
+const opText = document.getElementById('op-text')!;
+
+/** 讀後端的 NDJSON 進度串流（一行一個 JSON）：`progress` 行交給 onProgress，回傳 `done` 的內容；`error` 行丟出例外。 */
+async function readStream<T>(r: Response, onProgress: (p: { progress: number; speed?: string }) => void): Promise<T> {
+  const reader = r.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let done: T | undefined;
+  for (;;) {
+    const { done: end, value } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: true });
+    for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) {
+      const text = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!text) continue;
+      const o = JSON.parse(text);
+      if (o.error !== undefined) throw new Error(o.error);
+      if (o.done !== undefined) done = o.done as T;
+      else if (o.progress !== undefined) onProgress(o);
+    }
+    if (end) break;
+  }
+  if (done === undefined) throw new Error('連線中斷');
+  return done;
+}
 
 // 壓縮目前資料夾：後端在該資料夾的同層寫出「資料夾名.zip」（之後再用它同步到別台電腦）
 document.getElementById('zip-dir')!.addEventListener('click', async () => {
@@ -1227,7 +1261,11 @@ document.getElementById('zip-dir')!.addEventListener('click', async () => {
         continue;
       }
       if (!r.ok) throw new Error(await r.text());
-      const res = (await r.json()) as { zip_path: string; size: number; files: number };
+      const res = await readStream<{ zip_path: string; size: number; files: number }>(r, (p) => {
+        opProgress.hidden = false;
+        opBar.value = p.progress;
+        opText.textContent = `${p.progress}%`;
+      });
       infoEl.textContent = t().zipDone(res.zip_path, res.size, res.files);
       break;
     }
@@ -1235,6 +1273,7 @@ document.getElementById('zip-dir')!.addEventListener('click', async () => {
     infoEl.textContent = t().failed(e instanceof Error ? e.message : String(e));
   } finally {
     btn.disabled = false;
+    opProgress.hidden = true;
   }
 });
 

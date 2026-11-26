@@ -375,6 +375,17 @@ body {
   background: color-mix(in srgb, var(--systemBlue) 30%, transparent);
 }
 
+#op-progress,
+#sync-bar {
+  display: block;
+  margin: 4px 0;
+}
+
+#op-progress progress,
+#sync-bar {
+  width: 100%;
+}
+
 #zip-actions {
   margin: 4px 0;
 }

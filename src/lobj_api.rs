@@ -13,7 +13,7 @@
 //!   （JSON：`[{ kind, name, path }]`；`kind` 為 root / home / desktop / documents / downloads / drive）。
 //!   只監聽本機位址時才列出家目錄、桌面、文件、下載與磁碟機；否則只有 `--dir` 本身。
 //! - `POST /api/zip-dir`（只限本機、需 `X-Lobj-Requested`）：把資料夾（含子資料夾）壓成與它同層的 `<資料夾名>.zip`，
-//!   用來把整個資料夾傳到另一台電腦（見 `zip_dir`）。zip 內的路徑不能壓縮。
+//!   用來把整個資料夾傳到另一台電腦（見 `zip_dir`）；回應是 NDJSON 進度串流。zip 內的路徑不能壓縮。
 //! - `POST /api/lobj-convert`（只限本機、需 `X-Lobj-Requested`）：把舊 `.lobj` 依指定的 jaw 轉存成同資料夾的 `.lobj2`，
 //!   新檔沿用舊檔的建立 / 修改 / 存取時間，可選擇刪除舊檔（見 `convert`）。
 //!
@@ -30,6 +30,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use axum::{
     Router,
@@ -716,6 +717,57 @@ mod tests {
 }
 
 
+/// NDJSON 串流（一行一個 JSON）：`{"progress":..}` 若干行，最後一行是 `{"done":..}` 或 `{"error":".."}`。
+/// 開始串流之後 HTTP 狀態碼已是 200，所以失敗要靠最後一行的 `error` 表達；開始之前的錯誤仍用一般的狀態碼。
+pub(crate) type LineTx = tokio::sync::mpsc::Sender<Result<Vec<u8>, std::io::Error>>;
+
+pub(crate) fn line(json: String) -> Result<Vec<u8>, std::io::Error> {
+    Ok(format!("{json}\n").into_bytes())
+}
+
+pub(crate) fn ndjson_response(rx: tokio::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>>) -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/x-ndjson"), (header::CACHE_CONTROL, "no-store")],
+        axum::body::Body::from_stream(tokio_stream::wrappers::ReceiverStream::new(rx)),
+    )
+        .into_response()
+}
+
+/// 壓縮進度：以「已處理位元組 / 總位元組」換算百分比，百分比改變且距上次回報 ≥ 200ms 才送；
+/// 送不出去（前端已中斷連線）就回傳錯誤，讓壓縮停下來。
+struct ZipProgress<'a> {
+    tx: &'a LineTx,
+    done: u64,
+    total: u64,
+    last_pct: u64,
+    last: std::time::Instant,
+}
+
+impl ZipProgress<'_> {
+    fn add(&mut self, n: u64) -> anyhow::Result<()> {
+        self.done += n;
+        let pct = if self.total == 0 { 0 } else { (self.done * 100 / self.total).min(100) };
+        if pct != self.last_pct && self.last.elapsed() >= Duration::from_millis(200) {
+            self.last_pct = pct;
+            self.last = std::time::Instant::now();
+            self.tx.blocking_send(line(format!("{{\"progress\":{pct}}}"))).map_err(|_| anyhow::anyhow!("連線已中斷"))?;
+        }
+        Ok(())
+    }
+}
+
+/// `dir` 底下所有一般檔案的位元組總和（略過符號連結），當作進度的分母。
+fn dir_bytes(dir: &Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    rd.filter_map(Result::ok)
+        .map(|e| match e.file_type() {
+            Ok(ft) if ft.is_dir() => dir_bytes(&e.path()),
+            Ok(ft) if ft.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
+}
+
 /// 遞迴把 `dir` 寫進 zip，entry 名稱是相對 `base` 的 `/` 路徑（含最上層資料夾名）；略過符號連結。
 fn zip_add_dir<W: std::io::Write + std::io::Seek>(
     zw: &mut zip::ZipWriter<W>,
@@ -723,7 +775,9 @@ fn zip_add_dir<W: std::io::Write + std::io::Seek>(
     dir: &Path,
     opt: zip::write::SimpleFileOptions,
     count: &mut usize,
+    prog: &mut ZipProgress,
 ) -> anyhow::Result<()> {
+    use std::io::{Read, Write};
     let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(Result::ok).collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
@@ -735,12 +789,20 @@ fn zip_add_dir<W: std::io::Write + std::io::Seek>(
         let name = path.strip_prefix(base)?.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
         if ft.is_dir() {
             zw.add_directory(format!("{name}/"), opt)?;
-            zip_add_dir(zw, base, &path, opt, count)?;
+            zip_add_dir(zw, base, &path, opt, count, prog)?;
         } else if ft.is_file() {
             // 檔案被占用 / 無權限就略過，不讓整包失敗
             let Ok(mut f) = std::fs::File::open(&path) else { continue };
             zw.start_file(name, opt.large_file(e.metadata().map(|m| m.len() > u32::MAX as u64).unwrap_or(false)))?;
-            std::io::copy(&mut f, zw)?;
+            let mut buf = vec![0u8; 256 * 1024];
+            loop {
+                let n = f.read(&mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                zw.write_all(&buf[..n])?;
+                prog.add(n as u64)?;
+            }
             *count += 1;
         }
     }
@@ -749,8 +811,19 @@ fn zip_add_dir<W: std::io::Write + std::io::Seek>(
 
 const ZIP_REMOTE_MSG: &str = "壓縮會在伺服器上寫入檔案，只在伺服器監聽本機位址時開放";
 
+/// 壓縮前的檢查結果（這段失敗時還能回一般的 HTTP 錯誤）。
+struct ZipPlan {
+    dir: PathBuf,
+    base: PathBuf,
+    name: String,
+    out: PathBuf,
+    tmp: PathBuf,
+    total: u64,
+}
+
 /// 把資料夾壓成與它同層的 `<資料夾名>.zip`（用來傳到別台電腦）。body：`{ "path": 資料夾, "overwrite": bool }`。
-/// 先寫 `.partial` 完成才改名；同名檔已存在且未指定 overwrite 回 409。回傳 `{ zip_path, size, files }`（zip_path 是磁碟上的絕對路徑）。
+/// 先寫 `.partial` 完成才改名；同名檔已存在且未指定 overwrite 回 409。
+/// 檢查通過後回傳 NDJSON 串流：`{"progress":0-100}`…，最後 `{"done":{"zip_path","size","files"}}` 或 `{"error":".."}`；前端中斷連線會停止壓縮並刪掉 `.partial`。
 async fn zip_dir(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     if let Err(e) = crate::assoc::guard_with(&shared, &headers, true, ZIP_REMOTE_MSG) {
         return e.into_response();
@@ -759,7 +832,7 @@ async fn zip_dir(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
     let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
     let root = shared.root();
     let unrestricted = shared.local_only();
-    let job = move || -> Result<(PathBuf, u64, usize), (StatusCode, String)> {
+    let plan = move || -> Result<ZipPlan, (StatusCode, String)> {
         let r = resolve_ex(&root, &input, &AtomicBool::new(false), unrestricted).map_err(|(c, m)| (c, m.to_string()))?;
         if r.in_zip {
             return Err((StatusCode::BAD_REQUEST, "zip 內的資料夾不能壓縮".into()));
@@ -774,32 +847,35 @@ async fn zip_dir(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bod
         if out.exists() && !overwrite {
             return Err((StatusCode::CONFLICT, format!("{} 已存在", out.display())));
         }
-        let tmp = base.join(format!("{name}.zip.partial"));
-        let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
-        let fail = |e: anyhow::Error| {
-            std::fs::remove_file(&tmp).ok();
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        };
-        let file = std::fs::File::create(&tmp).map_err(io)?;
-        let mut zw = zip::ZipWriter::new(std::io::BufWriter::new(file));
-        let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        zw.add_directory(format!("{name}/"), opt).map_err(|e| fail(e.into()))?;
-        let mut count = 0usize;
-        zip_add_dir(&mut zw, base, &r.real, opt, &mut count).map_err(fail)?;
-        zw.finish().map_err(|e| fail(e.into()))?;
-        std::fs::rename(&tmp, &out).map_err(|e| {
-            std::fs::remove_file(&tmp).ok();
-            io(e)
-        })?;
-        Ok((out.clone(), std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0), count))
+        Ok(ZipPlan { tmp: base.join(format!("{name}.zip.partial")), base: base.to_path_buf(), total: dir_bytes(&r.real), dir: r.real, name, out })
     };
-    match tokio::task::spawn_blocking(job).await {
-        Ok(Ok((p, size, files))) => (
-            [(header::CONTENT_TYPE, "application/json")],
-            format!("{{\"zip_path\":{},\"size\":{size},\"files\":{files}}}", json_string(&p.to_string_lossy())),
-        )
-            .into_response(),
-        Ok(Err((c, m))) => (c, m).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    }
+    let plan = match tokio::task::spawn_blocking(plan).await {
+        Ok(Ok(p)) => p,
+        Ok(Err((c, m))) => return (c, m).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    tokio::task::spawn_blocking(move || {
+        let work = || -> anyhow::Result<(u64, usize)> {
+            let file = std::fs::File::create(&plan.tmp)?;
+            let mut zw = zip::ZipWriter::new(std::io::BufWriter::new(file));
+            let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            zw.add_directory(format!("{}/", plan.name), opt)?;
+            let mut count = 0usize;
+            let mut prog = ZipProgress { tx: &tx, done: 0, total: plan.total, last_pct: 0, last: std::time::Instant::now() };
+            zip_add_dir(&mut zw, &plan.base, &plan.dir, opt, &mut count, &mut prog)?;
+            zw.finish()?;
+            std::fs::rename(&plan.tmp, &plan.out)?;
+            Ok((std::fs::metadata(&plan.out).map(|m| m.len()).unwrap_or(0), count))
+        };
+        let last = match work() {
+            Ok((size, files)) => format!("{{\"done\":{{\"zip_path\":{},\"size\":{size},\"files\":{files}}}}}", json_string(&plan.out.to_string_lossy())),
+            Err(e) => {
+                std::fs::remove_file(&plan.tmp).ok();
+                format!("{{\"error\":{}}}", json_string(&e.to_string()))
+            }
+        };
+        tx.blocking_send(line(last)).ok();
+    });
+    ndjson_response(rx)
 }
