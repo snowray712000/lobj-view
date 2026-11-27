@@ -194,33 +194,155 @@ document.getElementById('dir-flatten')!.addEventListener('click', async () => {
 });
 
 // 遮蔽 / 還原第一層子資料夾名稱（演算法與 no_user_info.py 相容）。密碼只在這個對話框的輸入欄，送出後立刻清掉。
+// 檔名處理：不動 / 檔名內的資料夾名稱一併編碼 / 用規則（regex 取代或保留；規則可命名儲存在瀏覽器的 localStorage）。
 const maskDlg = document.getElementById('mask-dlg') as HTMLDialogElement;
 const maskPass = document.getElementById('mask-pass') as HTMLInputElement;
+const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 let maskMode: 'encode' | 'decode' = 'encode';
+
+interface MaskRule {
+  name: string;
+  kind: 'replace' | 'keep';
+  pattern: string;
+  replacement: string;
+}
+const RULES_KEY = 'lobj-view-mask-rules';
+// 範例：`93413335A_姓名` 這種「編號A_姓名」結尾（BCom 資料）整段刪除
+const DEFAULT_RULES: MaskRule[] = [{ name: 'BCom: _編號A_姓名', kind: 'replace', pattern: '_\\d+A_.+$', replacement: '' }];
+function loadRules(): MaskRule[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RULES_KEY) ?? 'null');
+    if (Array.isArray(v)) return v.filter((r) => r && typeof r.name === 'string' && typeof r.pattern === 'string');
+  } catch {
+    /* 用預設 */
+  }
+  return [...DEFAULT_RULES];
+}
+function saveRules(v: MaskRule[]): void {
+  try {
+    localStorage.setItem(RULES_KEY, JSON.stringify(v));
+  } catch {
+    /* 存不了就只留在這次 */
+  }
+}
+let rules = loadRules();
+
+function renderRules(selectName = ''): void {
+  const sel = el<HTMLSelectElement>('mask-rule-saved');
+  sel.replaceChildren(new Option(t().maskRuleNew, ''), ...rules.map((r) => new Option(r.name, r.name)));
+  sel.value = selectName;
+}
+function pickRule(): void {
+  const r = rules.find((x) => x.name === el<HTMLSelectElement>('mask-rule-saved').value);
+  if (!r) return;
+  el<HTMLSelectElement>('mask-kind').value = r.kind;
+  el<HTMLInputElement>('mask-pattern').value = r.pattern;
+  el<HTMLInputElement>('mask-repl').value = r.replacement;
+  el<HTMLInputElement>('mask-rule-name').value = r.name;
+  syncKind();
+}
+function syncKind(): void {
+  el('mask-repl').hidden = el<HTMLSelectElement>('mask-kind').value !== 'replace';
+}
+el('mask-rule-saved').addEventListener('change', pickRule);
+el('mask-kind').addEventListener('change', syncKind);
+el('mask-files').addEventListener('change', () => {
+  el('mask-rule').hidden = el<HTMLSelectElement>('mask-files').value !== 'rule';
+  el('mask-preview').textContent = '';
+});
+el('mask-rule-save').addEventListener('click', () => {
+  const name = el<HTMLInputElement>('mask-rule-name').value.trim();
+  const pattern = el<HTMLInputElement>('mask-pattern').value;
+  if (!name || !pattern) return;
+  const r: MaskRule = { name, kind: el<HTMLSelectElement>('mask-kind').value as MaskRule['kind'], pattern, replacement: el<HTMLInputElement>('mask-repl').value };
+  rules = [...rules.filter((x) => x.name !== name), r];
+  saveRules(rules);
+  renderRules(name);
+});
+el('mask-rule-del').addEventListener('click', () => {
+  const name = el<HTMLSelectElement>('mask-rule-saved').value;
+  if (!name) return;
+  rules = rules.filter((x) => x.name !== name);
+  saveRules(rules);
+  renderRules();
+});
+
+function filesOption(): unknown {
+  const m = el<HTMLSelectElement>('mask-files').value;
+  if (maskMode === 'decode' || m === 'none') return { mode: m === 'encode' ? 'encode' : 'none' };
+  if (m === 'encode') return { mode: 'encode' };
+  const kind = el<HTMLSelectElement>('mask-kind').value;
+  return { mode: 'rule', rule: { kind, pattern: el<HTMLInputElement>('mask-pattern').value, replacement: el<HTMLInputElement>('mask-repl').value } };
+}
 
 function openMask(mode: 'encode' | 'decode'): void {
   if (!selDir) return;
   maskMode = mode;
   const n = selDir.split('/').pop()!;
-  document.getElementById('mask-title')!.textContent = mode === 'encode' ? t().maskMaskTitle(n) : t().maskUnmaskTitle(n);
-  document.getElementById('mask-hint')!.textContent = t().maskHint;
-  document.getElementById('mask-ok')!.textContent = mode === 'encode' ? t().dirMask : t().dirUnmask;
+  el('mask-title').textContent = mode === 'encode' ? t().maskMaskTitle(n) : t().maskUnmaskTitle(n);
+  el('mask-hint').textContent = t().maskHint;
+  el('mask-ok').textContent = mode === 'encode' ? t().dirMask : t().dirUnmask;
   maskPass.value = '';
+  el('mask-preview').textContent = '';
+  // 還原時只有「檔名內的資料夾名稱一併編碼」需要選擇（規則不可逆，還原時不作用）
+  for (const o of el<HTMLSelectElement>('mask-files').options) o.hidden = mode === 'decode' && o.value === 'rule';
+  if (mode === 'decode' && el<HTMLSelectElement>('mask-files').value === 'rule') el<HTMLSelectElement>('mask-files').value = 'none';
+  el('mask-rule').hidden = mode === 'decode' || el<HTMLSelectElement>('mask-files').value !== 'rule';
+  el('mask-preview-btn').hidden = mode === 'decode';
+  renderRules();
+  syncKind();
   maskDlg.showModal();
   maskPass.focus();
 }
-document.getElementById('dir-mask')!.addEventListener('click', () => openMask('encode'));
-document.getElementById('dir-unmask')!.addEventListener('click', () => openMask('decode'));
-document.getElementById('mask-cancel')!.addEventListener('click', () => {
+el('dir-mask').addEventListener('click', () => openMask('encode'));
+el('dir-unmask').addEventListener('click', () => openMask('decode'));
+el('mask-cancel').addEventListener('click', () => {
   maskPass.value = '';
   maskDlg.close();
 });
-document.getElementById('mask-form')!.addEventListener('submit', async () => {
+
+interface MaskPreview {
+  folders: number;
+  changed: number;
+  files: { from: string; to: string; unmatched: boolean; leak: boolean }[];
+  unmatched: number;
+  leaks: number;
+  conflict: string | null;
+}
+el('mask-preview-btn').addEventListener('click', async () => {
+  const box = el('mask-preview');
+  if (!selDir || !maskPass.value) {
+    box.textContent = t().maskPass;
+    return;
+  }
+  box.textContent = '…';
+  const r = await post('/api/dir-mask', { path: selDir, mode: maskMode, password: maskPass.value, files: filesOption(), dry_run: true });
+  if (!r.ok) {
+    box.textContent = t().failed(await r.text());
+    return;
+  }
+  const pv = (await r.json()) as MaskPreview;
+  const lines = [t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
+  if (pv.conflict) lines.push(t().maskPreviewConflict(pv.conflict));
+  box.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
+  const ul = document.createElement('ul');
+  ul.className = 'mask-pv';
+  for (const f of pv.files) {
+    const li = document.createElement('li');
+    li.textContent = f.from === f.to ? `${f.from}` : `${f.from}  →  ${f.to}`;
+    if (f.unmatched || f.leak) li.className = 'flat-bad';
+    ul.append(li);
+  }
+  if (pv.changed + (pv.unmatched || 0) > pv.files.length) ul.append(Object.assign(document.createElement('li'), { textContent: t().maskPreviewMore }));
+  box.append(ul);
+});
+
+el('mask-form').addEventListener('submit', async () => {
   const password = maskPass.value;
   maskPass.value = '';
   if (!selDir || !password) return;
   infoEl.textContent = '…';
-  const r = await post('/api/dir-mask', { path: selDir, mode: maskMode, password });
+  const r = await post('/api/dir-mask', { path: selDir, mode: maskMode, password, files: filesOption() });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
     return;

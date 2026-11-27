@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view · organize</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <script type="module" crossorigin src="/assets/organize-ByGOFfS8.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/style-pjnR5Tcb.js">
+    <script type="module" crossorigin src="/assets/organize-CTo0elrw.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/style-BN7HwmD4.js">
     <link rel="stylesheet" crossorigin href="/assets/style-DUGaDjC-.css">
-    <link rel="stylesheet" crossorigin href="/assets/organize-BHg9DyuQ.css">
+    <link rel="stylesheet" crossorigin href="/assets/organize-CsXkNoHl.css">
     <link rel="stylesheet" crossorigin href="/assets/to-lobj2-Dft0Y1wI.css">
   </head>
   <body>
@@ -55,6 +55,33 @@
         <div id="mask-title"></div>
         <div id="mask-hint" class="hint"></div>
         <input id="mask-pass" type="password" autocomplete="off" data-i18n-placeholder="maskPass" placeholder="密碼">
+        <div id="mask-files-wrap">
+          <label><span data-i18n="maskFiles">檔名處理</span>
+            <select id="mask-files">
+              <option value="none" data-i18n="maskFilesNone">不動</option>
+              <option value="encode" data-i18n="maskFilesEncode">檔名內的資料夾名稱一併編碼</option>
+              <option value="rule" data-i18n="maskFilesRule">用規則（不可還原）</option>
+            </select>
+          </label>
+          <div id="mask-rule" hidden>
+            <div class="hint" data-i18n="maskRuleHint"></div>
+            <div class="sync-row">
+              <select id="mask-rule-saved" data-i18n-title="maskRuleSaved" title="已儲存的規則"></select>
+              <button type="button" id="mask-rule-del" data-i18n="maskRuleDel">刪除規則</button>
+            </div>
+            <div class="sync-row">
+              <select id="mask-kind"><option value="replace" data-i18n="maskKindReplace">取代</option><option value="keep" data-i18n="maskKindKeep">保留</option></select>
+              <input id="mask-pattern" type="text" spellcheck="false" data-i18n-placeholder="maskPattern" placeholder="regex">
+            </div>
+            <div class="sync-row"><input id="mask-repl" type="text" spellcheck="false" data-i18n-placeholder="maskReplacement" placeholder="取代成"></div>
+            <div class="sync-row">
+              <input id="mask-rule-name" type="text" spellcheck="false" data-i18n-placeholder="maskRuleName" placeholder="規則名稱">
+              <button type="button" id="mask-rule-save" data-i18n="maskRuleSave">儲存</button>
+            </div>
+          </div>
+          <button type="button" id="mask-preview-btn" data-i18n="maskPreview">預覽</button>
+          <div id="mask-preview" class="hint"></div>
+        </div>
         <div class="mask-btns">
           <button type="button" id="mask-cancel" data-i18n="cancel">取消</button>
           <button type="submit" id="mask-ok">OK</button>

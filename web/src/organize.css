@@ -10,3 +10,19 @@
   cursor: default;
   color: var(--secondaryLabel);
 }
+#mask-files-wrap {
+  margin-top: 8px;
+}
+#mask-files-wrap select,
+#mask-files-wrap input[type='text'] {
+  max-width: 100%;
+}
+#mask-preview .mask-pv {
+  max-height: 30vh;
+  overflow: auto;
+  margin: 4px 0;
+  padding-left: 16px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

@@ -349,9 +349,16 @@ async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json
 }
 
 /// 遮蔽 / 還原資料夾名稱（病患姓名等），演算法見 `namemask`，與 `no_user_info.py` 相容。
-/// body：`{ "path": 資料夾, "mode": "encode" | "decode", "password": 密碼 }`；只改所選資料夾底下第一層的子資料夾名稱
-/// （所選資料夾可以是根資料夾）。先算好全部新名稱，任何一個失敗（例如還原時密碼錯誤）或新名稱衝突就整個不動。
-/// 密碼只用來導出金鑰，不記錄、不儲存。回 `{ "count": 改了幾個 }`。
+/// body：`{ "path": 資料夾, "mode": "encode" | "decode", "password": 密碼, "files"?: ..., "dry_run"?: bool }`；
+/// 只改所選資料夾底下第一層的子資料夾名稱（所選資料夾可以是根資料夾）。
+/// 檔名處理 `files`（預設 `{"mode":"none"}`，不動檔名）：
+/// - `{"mode":"encode"}`：檔名裡內嵌的資料夾名稱一併換成同一個編碼（還原時換回來）；
+/// - `{"mode":"rule","rule":{"kind":"replace","pattern":re,"replacement":文字}}`：遮蔽時主檔名（不含副檔名）符合的部分換成文字（空白＝刪除）；
+/// - `{"mode":"rule","rule":{"kind":"keep","pattern":re}}`：遮蔽時主檔名只留第一個符合的部分。
+/// 規則不可逆（被刪掉的檔名不會回來）；還原時規則不作用。regex 為 Rust `regex` 語法（無 lookaround）。
+/// `dry_run: true` 只回預覽 `{ folders, files:[{from,to,unmatched,leak}], unmatched, leaks, conflict }`（files 最多 300 筆）。
+/// 先算好全部新名稱，任何一個失敗（例如還原時密碼錯誤）或新名稱衝突就整個不動。
+/// 密碼只用來導出金鑰，不記錄、不儲存。回 `{ "count": 資料夾數, "files": 改了幾個檔 }`。
 async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     respond(async {
         crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
@@ -364,60 +371,44 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
         if password.is_empty() {
             return Err(bad("請輸入密碼"));
         }
+        let dry = body.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+        let fm = parse_file_mode(body.get("files"))?;
         let top = any_dir(&shared, &str_of(&body, "path"))?;
         let root = shared.root();
         let password = password.to_owned();
-        let (plan, file_plan) = tokio::task::spawn_blocking(move || -> Result<MaskPlan, Fail> {
-            let key = crate::namemask::derive_key(&password);
-            let dirs = sub_dirs(&top).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            let mut plan = Vec::new();
-            let mut file_plan: Vec<(PathBuf, PathBuf)> = Vec::new();
-            for d in dirs {
-                if root.starts_with(&d) {
-                    return Err(bad("根資料夾在這些資料夾裡面，無法改名"));
-                }
-                let old = d.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                let new = if encode { crate::namemask::encode(&old, &key) } else { crate::namemask::decode(&old, &key).map_err(|m| bad(format!("{old}: {m}")))? };
-                if !valid_dir_name(&new) {
-                    return Err(bad(format!("{old}: 還原後的名稱不合法")));
-                }
-                // 檔名裡常內嵌資料夾名稱（例如 `Template4_upper_..._93413335A_姓名.lobj`），一併換掉；
-                // 只替換資料夾名稱那一段，其餘（upper/lower、step…）保持原樣，才不影響依檔名判斷上下顎。
-                let mut fs = Vec::new();
-                for f in files_under(&d).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))? {
-                    let fname = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                    if !fname.contains(&old) {
-                        continue;
-                    }
-                    let nf = fname.replace(&old, &new);
-                    if !valid_dir_name(&nf) {
-                        return Err(bad(format!("{fname}: 換名後檔名不合法（可能太長）")));
-                    }
-                    fs.push((f.clone(), f.with_file_name(nf)));
-                }
-                let mut seen = std::collections::HashSet::new();
-                if fs.iter().any(|(_, n)| !seen.insert(n.clone()) || n.exists()) {
-                    return Err((StatusCode::CONFLICT, "檔名衝突，未做任何變更".into()));
-                }
-                file_plan.extend(fs);
-                plan.push((d.clone(), d.with_file_name(new)));
-            }
-            let olds: std::collections::HashSet<&PathBuf> = plan.iter().map(|(o, _)| o).collect();
-            let news: std::collections::HashSet<&PathBuf> = plan.iter().map(|(_, n)| n).collect();
-            if news.len() != plan.len() || plan.iter().any(|(_, n)| n.exists() && !olds.contains(n)) {
-                return Err((StatusCode::CONFLICT, "名稱衝突，未做任何變更".into()));
-            }
-            Ok((plan, file_plan))
-        })
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+        let plan = tokio::task::spawn_blocking(move || mask_plan(&top, &root, &password, encode, &fm))
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+        if dry {
+            let rel = |p: &PathBuf| p.strip_prefix(&plan.top).unwrap_or(p).to_string_lossy().into_owned();
+            let items: Vec<String> = plan
+                .files
+                .iter()
+                .take(300)
+                .map(|f| format!("{{\"from\":{},\"to\":{},\"unmatched\":{},\"leak\":{}}}", json_str(&rel(&f.from)), json_str(&rel(&f.to)), f.unmatched, f.leak))
+                .collect();
+            return Ok(format!(
+                "{{\"folders\":{},\"changed\":{},\"files\":[{}],\"unmatched\":{},\"leaks\":{},\"conflict\":{}}}",
+                plan.dirs.len(),
+                plan.files.iter().filter(|f| f.from != f.to).count(),
+                items.join(","),
+                plan.unmatched,
+                plan.files.iter().filter(|f| f.leak).count(),
+                plan.conflict.as_deref().map(json_str).unwrap_or_else(|| "null".into())
+            ));
+        }
+        if let Some(m) = &plan.conflict {
+            return Err((StatusCode::CONFLICT, format!("{m}，未做任何變更")));
+        }
         // 先改檔名（此時資料夾還在原路徑），再改資料夾名稱
-        for (old, new) in &file_plan {
-            std::fs::rename(old, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let mut nfiles = 0;
+        for f in plan.files.iter().filter(|f| f.from != f.to) {
+            std::fs::rename(&f.from, &f.to).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            nfiles += 1;
         }
         // 新名稱可能剛好是另一個要改名的舊名稱：先全部改成暫名再改成最終名稱，避免互相覆蓋
         let mut stage = Vec::new();
-        for (i, (old, new)) in plan.iter().enumerate() {
+        for (i, (old, new)) in plan.dirs.iter().enumerate() {
             let tmp = old.with_file_name(format!(".lobj-mask-{}-{i}", std::process::id()));
             std::fs::rename(old, &tmp).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             stage.push((tmp, new.clone()));
@@ -425,12 +416,131 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
         for (tmp, new) in &stage {
             std::fs::rename(tmp, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         }
-        Ok(format!("{{\"count\":{},\"files\":{}}}", plan.len(), file_plan.len()))
+        Ok(format!("{{\"count\":{},\"files\":{nfiles}}}", plan.dirs.len()))
     }
     .await)
 }
 
-type MaskPlan = (Vec<(PathBuf, PathBuf)>, Vec<(PathBuf, PathBuf)>);
+fn json_str(s: &str) -> String {
+    serde_json::Value::String(s.to_owned()).to_string()
+}
+
+enum FileMode {
+    None,
+    Encode,
+    Replace(regex::Regex, String),
+    Keep(regex::Regex),
+}
+
+fn parse_file_mode(v: Option<&serde_json::Value>) -> Result<FileMode, Fail> {
+    let Some(v) = v else { return Ok(FileMode::None) };
+    match v.get("mode").and_then(|m| m.as_str()).unwrap_or("none") {
+        "none" => Ok(FileMode::None),
+        "encode" => Ok(FileMode::Encode),
+        "rule" => {
+            let r = v.get("rule").ok_or_else(|| bad("缺少規則"))?;
+            let pat = r.get("pattern").and_then(|x| x.as_str()).unwrap_or("");
+            if pat.is_empty() {
+                return Err(bad("規則的 regex 不可為空"));
+            }
+            let re = regex::Regex::new(pat).map_err(|e| bad(format!("regex 錯誤：{e}")))?;
+            match r.get("kind").and_then(|x| x.as_str()).unwrap_or("") {
+                "replace" => Ok(FileMode::Replace(re, r.get("replacement").and_then(|x| x.as_str()).unwrap_or("").to_owned())),
+                "keep" => Ok(FileMode::Keep(re)),
+                _ => Err(bad("規則的 kind 只能是 replace 或 keep")),
+            }
+        }
+        _ => Err(bad("files.mode 只能是 none、encode 或 rule")),
+    }
+}
+
+struct FileOp {
+    from: PathBuf,
+    to: PathBuf,
+    /// 規則模式下完全沒符合
+    unmatched: bool,
+    /// 處理後檔名仍含原資料夾名稱
+    leak: bool,
+}
+
+struct MaskPlan {
+    top: PathBuf,
+    dirs: Vec<(PathBuf, PathBuf)>,
+    files: Vec<FileOp>,
+    unmatched: usize,
+    /// 有衝突時的說明（預覽照常回傳，實際執行回 409）
+    conflict: Option<String>,
+}
+
+/// 規則套在主檔名（不含副檔名）；回 `(新檔名, 是否符合)`。
+fn apply_rule(fname: &str, fm: &FileMode) -> (String, bool) {
+    let (stem, ext) = match fname.rfind('.') {
+        Some(i) if i > 0 => fname.split_at(i),
+        _ => (fname, ""),
+    };
+    match fm {
+        FileMode::Replace(re, rep) => {
+            if !re.is_match(stem) {
+                return (fname.to_owned(), false);
+            }
+            (format!("{}{ext}", re.replace_all(stem, rep.as_str())), true)
+        }
+        FileMode::Keep(re) => match re.find(stem) {
+            Some(m) => (format!("{}{ext}", m.as_str()), true),
+            None => (fname.to_owned(), false),
+        },
+        _ => (fname.to_owned(), true),
+    }
+}
+
+fn mask_plan(top: &std::path::Path, root: &std::path::Path, password: &str, encode: bool, fm: &FileMode) -> Result<MaskPlan, Fail> {
+    let ise = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    let key = crate::namemask::derive_key(password);
+    let mut p = MaskPlan { top: top.to_path_buf(), dirs: Vec::new(), files: Vec::new(), unmatched: 0, conflict: None };
+    for d in sub_dirs(top).map_err(ise)? {
+        if root.starts_with(&d) {
+            return Err(bad("根資料夾在這些資料夾裡面，無法改名"));
+        }
+        let old = d.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let new = if encode { crate::namemask::encode(&old, &key) } else { crate::namemask::decode(&old, &key).map_err(|m| bad(format!("{old}: {m}")))? };
+        if !valid_dir_name(&new) {
+            return Err(bad(format!("{old}: 換名後的名稱不合法")));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for f in files_under(&d).map_err(ise)? {
+            let fname = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let (nf, matched) = match fm {
+                FileMode::None => (fname.clone(), true),
+                // 只替換資料夾名稱那一段，其餘（upper/lower、step…）保持原樣，才不影響依檔名判斷上下顎
+                FileMode::Encode => (fname.replace(&old, &new), true),
+                _ if encode => apply_rule(&fname, fm),
+                _ => (fname.clone(), true), // 規則不可逆，還原時不動檔名
+            };
+            let unmatched = !matched;
+            if unmatched {
+                p.unmatched += 1;
+            }
+            let leak = encode && nf.contains(&old);
+            if nf.is_empty() || !valid_dir_name(&nf) {
+                return Err(bad(format!("{fname}: 換名後檔名不合法（空白或太長）")));
+            }
+            let to = f.with_file_name(&nf);
+            if p.conflict.is_none() && (!seen.insert(to.clone()) || (to != f && to.exists())) {
+                p.conflict = Some(format!("檔名衝突：{old}/{nf}"));
+            }
+            if nf != fname || unmatched || leak {
+                p.files.push(FileOp { from: f, to, unmatched, leak });
+            }
+        }
+        p.dirs.push((d.clone(), d.with_file_name(new)));
+    }
+    let olds: std::collections::HashSet<&PathBuf> = p.dirs.iter().map(|(o, _)| o).collect();
+    let news: std::collections::HashSet<&PathBuf> = p.dirs.iter().map(|(_, n)| n).collect();
+    if p.conflict.is_none() && (news.len() != p.dirs.len() || p.dirs.iter().any(|(_, n)| n.exists() && !olds.contains(n))) {
+        p.conflict = Some("名稱衝突".into());
+    }
+    Ok(p)
+}
 
 /// `dir` 底下所有檔案（遞迴，不含符號連結）。
 fn files_under(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
