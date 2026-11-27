@@ -14,4 +14,4 @@ Date: 2026-11-27. Project: `lobj-view`. Version 1.20.4. Follows [261126p](261126
 - Password is sent in the POST body (HTTPS on LAN by default), never stored or logged.
 
 ## Verification
-Unit tests (python vectors, wrong password); curl: level-2 conflict 409, level-2 success (4 folders), missing level 400, mask/unmask round trip, wrong password leaves names untouched. Browser UI NOT clicked through.
+Unit tests (python vectors, wrong password); curl: level-2 conflict 409, level-2 success (4 folders), missing level 400, mask/unmask round trip, wrong password leaves names untouched. The user later confirmed level flatten and name masking work in the browser.
