@@ -918,3 +918,37 @@ body {
   width: 6em;
   vertical-align: middle;
 }
+
+.dir-level input {
+  width: 3.5em;
+}
+
+#mask-dlg {
+  background: var(--secondarySystemBackground);
+  color: var(--label);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  padding: 14px 18px;
+  width: min(380px, calc(100vw - 32px));
+}
+
+#mask-dlg::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+#mask-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+#mask-pass {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0;
+}
+
+.mask-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

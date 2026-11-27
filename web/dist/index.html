@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <script type="module" crossorigin src="/assets/main-t54UWpXV.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/style-G8bFM-GU.js">
-    <link rel="stylesheet" crossorigin href="/assets/style-BDPg2Khw.css">
+    <script type="module" crossorigin src="/assets/main-CDjtpHI-.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/style-DQH3TNUX.js">
+    <link rel="stylesheet" crossorigin href="/assets/style-D3rRuU53.css">
   </head>
   <body>
     <div id="viewport"></div>
@@ -62,6 +62,9 @@
             <span id="dir-sel"></span>
             <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip" title="重新命名所選的資料夾">重新命名</button>
             <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip" title="把所選資料夾裡的項目移到上一層，再刪除這個空資料夾">拿掉這層</button>
+            <label class="dir-level" data-i18n-title="dirLevelTip" title="0＝所選資料夾本身；N＝所選資料夾底下第 N 層的每個資料夾（例如在 R 填 2，R/aa1/lobj、R/aa2/lobj 都被拿掉）"><span data-i18n="dirLevel">層</span> <input id="dir-level" type="number" min="0" max="8" value="0"></label>
+            <button id="dir-mask" type="button" data-i18n="dirMask" data-i18n-title="dirMaskTip" title="把所選資料夾底下第一層子資料夾的名稱遮蔽成 a-z2-7（可用密碼還原）">遮蔽名稱</button>
+            <button id="dir-unmask" type="button" data-i18n="dirUnmask" data-i18n-title="dirUnmaskTip" title="用密碼把遮蔽過的子資料夾名稱還原">還原名稱</button>
           </div>
           <div id="op-progress" hidden><progress id="op-bar" max="100" value="0"></progress> <span id="op-text"></span></div>
           <div id="info"></div>
@@ -95,6 +98,17 @@
       <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> <span data-i18n="details">細節</span></label><button id="versions-close" type="button">✕</button></div>
       <div id="versions-body"></div>
     </div>
+    <dialog id="mask-dlg">
+      <form method="dialog" id="mask-form">
+        <div id="mask-title"></div>
+        <div id="mask-hint" class="hint"></div>
+        <input id="mask-pass" type="password" autocomplete="off" data-i18n-placeholder="maskPass" placeholder="密碼">
+        <div class="mask-btns">
+          <button type="button" id="mask-cancel" data-i18n="cancel">取消</button>
+          <button type="submit" id="mask-ok">OK</button>
+        </div>
+      </form>
+    </dialog>
     <div id="sync" hidden>
       <div class="dlg-head"><b data-i18n="syncTitle">同步到另一台電腦</b><button id="sync-close" type="button">✕</button></div>
       <div id="sync-body">

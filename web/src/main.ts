@@ -1120,25 +1120,55 @@ document.getElementById('dir-rename')!.addEventListener('click', async () => {
 });
 
 document.getElementById('dir-flatten')!.addEventListener('click', async () => {
-  if (!selDir || !confirm(t().dirFlattenConfirm(selDir.split('/').pop()!))) return;
-  const r = await assocCall('/api/dir-flatten', { path: selDir });
+  if (!selDir) return;
+  const n = selDir.split('/').pop()!;
+  const level = Math.max(0, Math.min(8, Math.floor(Number((document.getElementById('dir-level') as HTMLInputElement).value) || 0)));
+  if (!confirm(level === 0 ? t().dirFlattenConfirm(n) : t().dirFlattenLevelConfirm(n, level))) return;
+  const r = await assocCall('/api/dir-flatten', { path: selDir, level });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
     return;
   }
-  const res = (await r.json()) as { moved: number };
+  const res = (await r.json()) as { moved: number; folders: number };
   await browse(curDir);
-  infoEl.textContent = t().dirFlattenDone(res.moved);
+  infoEl.textContent = level === 0 ? t().dirFlattenDone(res.moved) : t().dirFlattenDoneN(res.moved, res.folders);
 });
 
-document.getElementById('zip-del')!.addEventListener('click', async () => {
-  if (!selDir || !confirm(t().zipDelConfirm(selDir.split('/').pop()!))) return;
-  const r = await assocCall('/api/zip-delete', { path: selDir });
+// 遮蔽 / 還原第一層子資料夾名稱（演算法與 no_user_info.py 相容）。密碼只在這個對話框的輸入欄，送出後立刻清掉。
+const maskDlg = document.getElementById('mask-dlg') as HTMLDialogElement;
+const maskPass = document.getElementById('mask-pass') as HTMLInputElement;
+let maskMode: 'encode' | 'decode' = 'encode';
+
+function openMask(mode: 'encode' | 'decode'): void {
+  if (!selDir) return;
+  maskMode = mode;
+  const n = selDir.split('/').pop()!;
+  document.getElementById('mask-title')!.textContent = mode === 'encode' ? t().maskMaskTitle(n) : t().maskUnmaskTitle(n);
+  document.getElementById('mask-hint')!.textContent = t().maskHint;
+  document.getElementById('mask-ok')!.textContent = mode === 'encode' ? t().dirMask : t().dirUnmask;
+  maskPass.value = '';
+  maskDlg.showModal();
+  maskPass.focus();
+}
+document.getElementById('dir-mask')!.addEventListener('click', () => openMask('encode'));
+document.getElementById('dir-unmask')!.addEventListener('click', () => openMask('decode'));
+document.getElementById('mask-cancel')!.addEventListener('click', () => {
+  maskPass.value = '';
+  maskDlg.close();
+});
+document.getElementById('mask-form')!.addEventListener('submit', async () => {
+  const password = maskPass.value;
+  maskPass.value = '';
+  if (!selDir || !password) return;
+  infoEl.textContent = '…';
+  const r = await assocCall('/api/dir-mask', { path: selDir, mode: maskMode, password });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
     return;
   }
+  const res = (await r.json()) as { count: number };
   await browse(curDir);
+  infoEl.textContent = t().maskDone(res.count);
 });
 
 // 解壓縮所選的 .zip（同層；已存在先問是否覆蓋）。readStream / opProgress 在檔案後段宣告，點擊時才用到。

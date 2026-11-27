@@ -74,6 +74,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/zip-delete", post(zip_delete))
         .route("/api/dir-rename", post(dir_rename))
         .route("/api/dir-flatten", post(dir_flatten))
+        .route("/api/dir-mask", post(dir_mask))
         .route("/api/sync-jobs", get(sync_jobs))
         .route("/api/sync-job-stop", post(sync_job_stop))
         .route("/api/sync-job-clear", post(sync_job_clear))
@@ -238,27 +239,142 @@ async fn dir_rename(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(
     .await)
 }
 
-/// 「拿掉這層」：把資料夾裡的項目全部移到它的上一層，再刪掉這個（已清空的）資料夾。
-/// body：`{ "path": 資料夾 }`。先檢查，上一層已有同名項目（含與資料夾自己同名）就整個不動並回 409；
-/// 最後用 `remove_dir`（只刪空資料夾）所以不會誤刪內容。回 `{ "moved": 搬了幾個, "path": 上一層 }`。
+/// 解析成磁碟上的資料夾（不在 zip 內）；根資料夾與它的上層是否可用由呼叫端決定。
+fn any_dir(shared: &Shared, input: &str) -> Result<PathBuf, Fail> {
+    let r = resolve_ex(&shared.root(), input, &AtomicBool::new(false), shared.local_only()).map_err(|(c, m)| (c, m.to_string()))?;
+    if r.in_zip || !r.real.is_dir() {
+        return Err(bad("只能操作磁碟上的資料夾"));
+    }
+    Ok(r.real)
+}
+
+/// `dir` 底下的子資料夾（不含符號連結），依名稱排序。
+fn sub_dirs(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .collect();
+    v.sort();
+    Ok(v)
+}
+
+/// 「拿掉這層」：把目標資料夾裡的項目全部移到它的上一層，再刪掉這個（已清空的）資料夾。
+/// body：`{ "path": 資料夾, "level"?: N }`。`level` 省略或 0＝所選資料夾本身；
+/// N ≥ 1＝所選資料夾底下第 N 層的每一個資料夾（1＝它的子資料夾，2＝孫資料夾…），一次全部處理
+/// （例如在 R 選 2：`R/aa1/lobj`、`R/aa2/lobj` 都被拿掉，內容移到 `R/aa1`、`R/aa2`）。
+/// 先檢查全部目標，上一層已有同名項目（含與目標自己同名、或同一層的兩個目標內容互相同名）就整個不動並回 409；
+/// 最後用 `remove_dir`（只刪空資料夾）所以不會誤刪內容。回 `{ "moved": 搬了幾個項目, "folders": 處理幾個資料夾 }`。
 async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     respond(async {
         crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
-        let dir = real_dir(&shared, &str_of(&body, "path"))?;
-        let parent = dir.parent().ok_or_else(|| bad("沒有上一層"))?.to_path_buf();
+        let level = body.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
+        if level > 8 {
+            return Err(bad("層數太大（最多 8）"));
+        }
         let io = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
-        let names: Vec<std::ffi::OsString> = std::fs::read_dir(&dir).map_err(io)?.filter_map(Result::ok).map(|e| e.file_name()).collect();
-        let clash: Vec<String> = names.iter().filter(|n| parent.join(n).exists()).map(|n| n.to_string_lossy().into_owned()).collect();
+        let top = if level == 0 { real_dir(&shared, &str_of(&body, "path"))? } else { any_dir(&shared, &str_of(&body, "path"))? };
+        let mut targets = vec![top.clone()];
+        if level > 0 {
+            for _ in 0..level {
+                let mut next = Vec::new();
+                for d in &targets {
+                    next.extend(sub_dirs(d).map_err(io)?);
+                }
+                targets = next;
+            }
+            if targets.is_empty() {
+                return Err(bad(format!("第 {level} 層沒有資料夾")));
+            }
+        }
+        let root = shared.root();
+        // (搬的來源, 目的地)
+        let mut moves: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut planned: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut clash: Vec<String> = Vec::new();
+        for t in &targets {
+            let Some(parent) = t.parent() else { return Err(bad("沒有上一層")) };
+            if root.starts_with(t) {
+                return Err(bad("不能操作根資料夾（或它的上層）"));
+            }
+            for e in std::fs::read_dir(t).map_err(io)?.filter_map(Result::ok) {
+                let to = parent.join(e.file_name());
+                if to.exists() || !planned.insert(to.clone()) {
+                    clash.push(to.strip_prefix(&top).unwrap_or(&to).to_string_lossy().into_owned());
+                }
+                moves.push((e.path(), to));
+            }
+        }
         if !clash.is_empty() {
             let shown = clash.iter().take(5).cloned().collect::<Vec<_>>().join("、");
             let more = if clash.len() > 5 { format!(" 等 {} 項", clash.len()) } else { String::new() };
             return Err((StatusCode::CONFLICT, format!("上一層已有同名項目：{shown}{more}，未做任何變更")));
         }
-        for n in &names {
-            std::fs::rename(dir.join(n), parent.join(n)).map_err(io)?;
+        for (from, to) in &moves {
+            std::fs::rename(from, to).map_err(io)?;
         }
-        std::fs::remove_dir(&dir).map_err(io)?;
-        Ok(format!("{{\"moved\":{},\"path\":{}}}", names.len(), json_string(&parent.to_string_lossy())))
+        for t in &targets {
+            std::fs::remove_dir(t).map_err(io)?;
+        }
+        Ok(format!("{{\"moved\":{},\"folders\":{}}}", moves.len(), targets.len()))
+    }
+    .await)
+}
+
+/// 遮蔽 / 還原資料夾名稱（病患姓名等），演算法見 `namemask`，與 `no_user_info.py` 相容。
+/// body：`{ "path": 資料夾, "mode": "encode" | "decode", "password": 密碼 }`；只改所選資料夾底下第一層的子資料夾名稱
+/// （所選資料夾可以是根資料夾）。先算好全部新名稱，任何一個失敗（例如還原時密碼錯誤）或新名稱衝突就整個不動。
+/// 密碼只用來導出金鑰，不記錄、不儲存。回 `{ "count": 改了幾個 }`。
+async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
+        let encode = match str_of(&body, "mode").as_str() {
+            "encode" => true,
+            "decode" => false,
+            _ => return Err(bad("mode 只能是 encode 或 decode")),
+        };
+        let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
+        if password.is_empty() {
+            return Err(bad("請輸入密碼"));
+        }
+        let top = any_dir(&shared, &str_of(&body, "path"))?;
+        let root = shared.root();
+        let password = password.to_owned();
+        let plan = tokio::task::spawn_blocking(move || -> Result<Vec<(PathBuf, PathBuf)>, Fail> {
+            let key = crate::namemask::derive_key(&password);
+            let dirs = sub_dirs(&top).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let mut plan = Vec::new();
+            for d in dirs {
+                if root.starts_with(&d) {
+                    return Err(bad("根資料夾在這些資料夾裡面，無法改名"));
+                }
+                let old = d.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                let new = if encode { crate::namemask::encode(&old, &key) } else { crate::namemask::decode(&old, &key).map_err(|m| bad(format!("{old}: {m}")))? };
+                if !valid_dir_name(&new) {
+                    return Err(bad(format!("{old}: 還原後的名稱不合法")));
+                }
+                plan.push((d.clone(), d.with_file_name(new)));
+            }
+            let olds: std::collections::HashSet<&PathBuf> = plan.iter().map(|(o, _)| o).collect();
+            let news: std::collections::HashSet<&PathBuf> = plan.iter().map(|(_, n)| n).collect();
+            if news.len() != plan.len() || plan.iter().any(|(_, n)| n.exists() && !olds.contains(n)) {
+                return Err((StatusCode::CONFLICT, "名稱衝突，未做任何變更".into()));
+            }
+            Ok(plan)
+        })
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+        // 新名稱可能剛好是另一個要改名的舊名稱：先全部改成暫名再改成最終名稱，避免互相覆蓋
+        let mut stage = Vec::new();
+        for (i, (old, new)) in plan.iter().enumerate() {
+            let tmp = old.with_file_name(format!(".lobj-mask-{}-{i}", std::process::id()));
+            std::fs::rename(old, &tmp).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            stage.push((tmp, new.clone()));
+        }
+        for (tmp, new) in &stage {
+            std::fs::rename(tmp, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+        Ok(format!("{{\"count\":{}}}", plan.len()))
     }
     .await)
 }

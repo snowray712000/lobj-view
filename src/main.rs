@@ -8,6 +8,7 @@ mod tls;
 mod update;
 mod zipfs;
 mod zipsync;
+mod namemask;
 
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
