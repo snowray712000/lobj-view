@@ -12,4 +12,4 @@ For a selected folder: "重新命名", and "拿掉這層" (move contents up to t
 - Not done: rollback if a move fails midway.
 
 ## Verification
-curl against a debug server: conflict 409 untouched, flatten, rename, existing 409, bad name 400, root 400. Browser buttons NOT clicked through.
+curl against a debug server: conflict 409 untouched, flatten, rename, existing 409, bad name 400, root 400. The user then tried the buttons in the browser and confirmed they work.
