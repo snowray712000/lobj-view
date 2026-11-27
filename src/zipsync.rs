@@ -75,6 +75,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
         .route("/api/dir-rename", post(dir_rename))
         .route("/api/dir-flatten", post(dir_flatten))
         .route("/api/dir-mask", post(dir_mask))
+        .route("/api/file-rule", post(file_rule))
         .route("/api/sync-jobs", get(sync_jobs))
         .route("/api/sync-job-stop", post(sync_job_stop))
         .route("/api/sync-job-clear", post(sync_job_clear))
@@ -380,22 +381,7 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
         if dry {
-            let rel = |p: &PathBuf| p.strip_prefix(&plan.top).unwrap_or(p).to_string_lossy().into_owned();
-            let items: Vec<String> = plan
-                .files
-                .iter()
-                .take(300)
-                .map(|f| format!("{{\"from\":{},\"to\":{},\"unmatched\":{},\"leak\":{}}}", json_str(&rel(&f.from)), json_str(&rel(&f.to)), f.unmatched, f.leak))
-                .collect();
-            return Ok(format!(
-                "{{\"folders\":{},\"changed\":{},\"files\":[{}],\"unmatched\":{},\"leaks\":{},\"conflict\":{}}}",
-                plan.dirs.len(),
-                plan.files.iter().filter(|f| f.from != f.to).count(),
-                items.join(","),
-                plan.unmatched,
-                plan.files.iter().filter(|f| f.leak).count(),
-                plan.conflict.as_deref().map(json_str).unwrap_or_else(|| "null".into())
-            ));
+            return Ok(preview_json(&plan));
         }
         if let Some(m) = &plan.conflict {
             return Err((StatusCode::CONFLICT, format!("{m}，未做任何變更")));
@@ -417,6 +403,82 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
             std::fs::rename(tmp, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         }
         Ok(format!("{{\"count\":{},\"files\":{nfiles}}}", plan.dirs.len()))
+    }
+    .await)
+}
+
+fn preview_json(plan: &MaskPlan) -> String {
+    let rel = |p: &PathBuf| p.strip_prefix(&plan.top).unwrap_or(p).to_string_lossy().into_owned();
+    let items: Vec<String> = plan
+        .files
+        .iter()
+        .take(300)
+        .map(|f| format!("{{\"from\":{},\"to\":{},\"unmatched\":{},\"leak\":{}}}", json_str(&rel(&f.from)), json_str(&rel(&f.to)), f.unmatched, f.leak))
+        .collect();
+    format!(
+        "{{\"folders\":{},\"changed\":{},\"files\":[{}],\"unmatched\":{},\"leaks\":{},\"conflict\":{}}}",
+        plan.dirs.len(),
+        plan.files.iter().filter(|f| f.from != f.to).count(),
+        items.join(","),
+        plan.unmatched,
+        plan.files.iter().filter(|f| f.leak).count(),
+        plan.conflict.as_deref().map(json_str).unwrap_or_else(|| "null".into())
+    )
+}
+
+/// 只處理檔名（不動資料夾名稱、不需要密碼）：把規則套在所選資料夾底下的檔案主檔名。
+/// body：`{ "path": 資料夾, "rule": {kind, pattern, replacement}, "depth"?: N, "dry_run"?: bool }`；
+/// `depth` 省略或 0＝底下所有檔案（遞迴）；N ≥ 1＝只處理第 N 層的檔案（1＝直接在所選資料夾裡）。
+/// 預覽格式同 `/api/dir-mask`（`folders` 恆為 0、`leaks` 恆為 0）；有衝突就整批不動（409）。回 `{ "files": 改了幾個 }`。
+async fn file_rule(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    respond(async {
+        crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
+        let dry = body.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+        let depth = body.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let fm = parse_file_mode(Some(&serde_json::json!({ "mode": "rule", "rule": body.get("rule").cloned().unwrap_or_default() })))?;
+        let top = any_dir(&shared, &str_of(&body, "path"))?;
+        let plan = tokio::task::spawn_blocking(move || -> Result<MaskPlan, Fail> {
+            let mut p = MaskPlan { top: top.clone(), dirs: Vec::new(), files: Vec::new(), unmatched: 0, conflict: None };
+            let mut seen = std::collections::HashSet::new();
+            let mut all = files_under(&top).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            all.sort();
+            for f in all {
+                let comps = f.strip_prefix(&top).map(|r| r.components().count()).unwrap_or(0);
+                if depth > 0 && comps != depth {
+                    continue;
+                }
+                let fname = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                let (nf, matched) = apply_rule(&fname, &fm);
+                if nf.is_empty() || !valid_dir_name(&nf) {
+                    return Err(bad(format!("{fname}: 換名後檔名不合法（空白或太長）")));
+                }
+                let to = f.with_file_name(&nf);
+                if p.conflict.is_none() && (!seen.insert(to.clone()) || (to != f && to.exists())) {
+                    p.conflict = Some(format!("檔名衝突：{nf}"));
+                }
+                if !matched {
+                    p.unmatched += 1;
+                }
+                if nf != fname || !matched {
+                    p.files.push(FileOp { from: f, to, unmatched: !matched, leak: false });
+                }
+            }
+            Ok(p)
+        })
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+        if dry {
+            return Ok(preview_json(&plan));
+        }
+        if let Some(m) = &plan.conflict {
+            return Err((StatusCode::CONFLICT, format!("{m}，未做任何變更")));
+        }
+        let mut n = 0;
+        for f in plan.files.iter().filter(|f| f.from != f.to) {
+            std::fs::rename(&f.from, &f.to).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            n += 1;
+        }
+        Ok(format!("{{\"files\":{n}}}"))
     }
     .await)
 }

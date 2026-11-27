@@ -924,6 +924,7 @@ body {
 }
 
 #mask-dlg,
+#rule-dlg,
 #flat-dlg {
   background: var(--secondarySystemBackground);
   color: var(--label);
@@ -934,11 +935,13 @@ body {
 }
 
 #mask-dlg::backdrop,
+#rule-dlg::backdrop,
 #flat-dlg::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
 
 #mask-title,
+#rule-title,
 #flat-title {
   font-weight: 600;
   margin-bottom: 4px;

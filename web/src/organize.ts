@@ -227,52 +227,106 @@ function saveRules(v: MaskRule[]): void {
 }
 let rules = loadRules();
 
-function renderRules(selectName = ''): void {
-  const sel = el<HTMLSelectElement>('mask-rule-saved');
-  sel.replaceChildren(new Option(t().maskRuleNew, ''), ...rules.map((r) => new Option(r.name, r.name)));
-  sel.value = selectName;
+interface RuleBody {
+  kind: 'replace' | 'keep';
+  pattern: string;
+  replacement: string;
 }
-function pickRule(): void {
-  const r = rules.find((x) => x.name === el<HTMLSelectElement>('mask-rule-saved').value);
-  if (!r) return;
-  el<HTMLSelectElement>('mask-kind').value = r.kind;
-  el<HTMLInputElement>('mask-pattern').value = r.pattern;
-  el<HTMLInputElement>('mask-repl').value = r.replacement;
-  el<HTMLInputElement>('mask-rule-name').value = r.name;
-  syncKind();
+
+/** 規則編輯器（取代 / 保留 + regex + 命名儲存）：遮蔽對話框與「處理檔名」對話框共用，各掛在自己的容器裡。 */
+function mountRuleEditor(box: HTMLElement): { rule(): RuleBody; refresh(): void } {
+  box.innerHTML = `
+    <div class="hint" data-r="hint"></div>
+    <div class="sync-row"><select data-r="saved"></select><button type="button" data-r="del"></button></div>
+    <div class="sync-row"><select data-r="kind"><option value="replace"></option><option value="keep"></option></select><input data-r="pattern" type="text" spellcheck="false"></div>
+    <div class="sync-row"><input data-r="repl" type="text" spellcheck="false"></div>
+    <div class="sync-row"><input data-r="name" type="text" spellcheck="false"><button type="button" data-r="save"></button></div>`;
+  const q = <T extends HTMLElement>(k: string) => box.querySelector<T>(`[data-r="${k}"]`)!;
+  const saved = q<HTMLSelectElement>('saved');
+  const kind = q<HTMLSelectElement>('kind');
+  const pattern = q<HTMLInputElement>('pattern');
+  const repl = q<HTMLInputElement>('repl');
+  const name = q<HTMLInputElement>('name');
+  const syncKind = () => (repl.hidden = kind.value !== 'replace');
+  const render = (sel = '') => {
+    saved.replaceChildren(new Option(t().maskRuleNew, ''), ...rules.map((r) => new Option(r.name, r.name)));
+    saved.value = sel;
+  };
+  const refresh = () => {
+    q('hint').textContent = t().maskRuleHint;
+    q('del').textContent = t().maskRuleDel;
+    q('save').textContent = t().maskRuleSave;
+    kind.options[0].text = t().maskKindReplace;
+    kind.options[1].text = t().maskKindKeep;
+    pattern.placeholder = t().maskPattern;
+    repl.placeholder = t().maskReplacement;
+    name.placeholder = t().maskRuleName;
+    saved.title = t().maskRuleSaved;
+    render(saved.value);
+    syncKind();
+  };
+  saved.addEventListener('change', () => {
+    const r = rules.find((x) => x.name === saved.value);
+    if (!r) return;
+    kind.value = r.kind;
+    pattern.value = r.pattern;
+    repl.value = r.replacement;
+    name.value = r.name;
+    syncKind();
+  });
+  kind.addEventListener('change', syncKind);
+  q('save').addEventListener('click', () => {
+    const n = name.value.trim();
+    if (!n || !pattern.value) return;
+    rules = [...rules.filter((x) => x.name !== n), { name: n, kind: kind.value as RuleBody['kind'], pattern: pattern.value, replacement: repl.value }];
+    saveRules(rules);
+    render(n);
+  });
+  q('del').addEventListener('click', () => {
+    if (!saved.value) return;
+    rules = rules.filter((x) => x.name !== saved.value);
+    saveRules(rules);
+    render();
+  });
+  refresh();
+  return { rule: () => ({ kind: kind.value as RuleBody['kind'], pattern: pattern.value, replacement: repl.value }), refresh };
 }
-function syncKind(): void {
-  el('mask-repl').hidden = el<HTMLSelectElement>('mask-kind').value !== 'replace';
+
+interface RulePreview {
+  folders: number;
+  changed: number;
+  files: { from: string; to: string; unmatched: boolean; leak: boolean }[];
+  unmatched: number;
+  leaks: number;
+  conflict: string | null;
 }
-el('mask-rule-saved').addEventListener('change', pickRule);
-el('mask-kind').addEventListener('change', syncKind);
+function showPreview(box: HTMLElement, pv: RulePreview): void {
+  const lines = [t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
+  if (pv.conflict) lines.push(t().maskPreviewConflict(pv.conflict));
+  box.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
+  const ul = document.createElement('ul');
+  ul.className = 'mask-pv';
+  for (const f of pv.files) {
+    const li = document.createElement('li');
+    li.textContent = f.from === f.to ? f.from : `${f.from}  →  ${f.to}`;
+    if (f.unmatched || f.leak) li.className = 'flat-bad';
+    ul.append(li);
+  }
+  if (pv.files.length >= 300) ul.append(Object.assign(document.createElement('li'), { textContent: t().maskPreviewMore }));
+  box.append(ul);
+}
+
+const maskEditor = mountRuleEditor(el('mask-rule'));
 el('mask-files').addEventListener('change', () => {
   el('mask-rule').hidden = el<HTMLSelectElement>('mask-files').value !== 'rule';
   el('mask-preview').textContent = '';
-});
-el('mask-rule-save').addEventListener('click', () => {
-  const name = el<HTMLInputElement>('mask-rule-name').value.trim();
-  const pattern = el<HTMLInputElement>('mask-pattern').value;
-  if (!name || !pattern) return;
-  const r: MaskRule = { name, kind: el<HTMLSelectElement>('mask-kind').value as MaskRule['kind'], pattern, replacement: el<HTMLInputElement>('mask-repl').value };
-  rules = [...rules.filter((x) => x.name !== name), r];
-  saveRules(rules);
-  renderRules(name);
-});
-el('mask-rule-del').addEventListener('click', () => {
-  const name = el<HTMLSelectElement>('mask-rule-saved').value;
-  if (!name) return;
-  rules = rules.filter((x) => x.name !== name);
-  saveRules(rules);
-  renderRules();
 });
 
 function filesOption(): unknown {
   const m = el<HTMLSelectElement>('mask-files').value;
   if (maskMode === 'decode' || m === 'none') return { mode: m === 'encode' ? 'encode' : 'none' };
   if (m === 'encode') return { mode: 'encode' };
-  const kind = el<HTMLSelectElement>('mask-kind').value;
-  return { mode: 'rule', rule: { kind, pattern: el<HTMLInputElement>('mask-pattern').value, replacement: el<HTMLInputElement>('mask-repl').value } };
+  return { mode: 'rule', rule: maskEditor.rule() };
 }
 
 function openMask(mode: 'encode' | 'decode'): void {
@@ -289,8 +343,7 @@ function openMask(mode: 'encode' | 'decode'): void {
   if (mode === 'decode' && el<HTMLSelectElement>('mask-files').value === 'rule') el<HTMLSelectElement>('mask-files').value = 'none';
   el('mask-rule').hidden = mode === 'decode' || el<HTMLSelectElement>('mask-files').value !== 'rule';
   el('mask-preview-btn').hidden = mode === 'decode';
-  renderRules();
-  syncKind();
+  maskEditor.refresh();
   maskDlg.showModal();
   maskPass.focus();
 }
@@ -301,14 +354,6 @@ el('mask-cancel').addEventListener('click', () => {
   maskDlg.close();
 });
 
-interface MaskPreview {
-  folders: number;
-  changed: number;
-  files: { from: string; to: string; unmatched: boolean; leak: boolean }[];
-  unmatched: number;
-  leaks: number;
-  conflict: string | null;
-}
 el('mask-preview-btn').addEventListener('click', async () => {
   const box = el('mask-preview');
   if (!selDir || !maskPass.value) {
@@ -321,20 +366,43 @@ el('mask-preview-btn').addEventListener('click', async () => {
     box.textContent = t().failed(await r.text());
     return;
   }
-  const pv = (await r.json()) as MaskPreview;
-  const lines = [t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
-  if (pv.conflict) lines.push(t().maskPreviewConflict(pv.conflict));
-  box.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
-  const ul = document.createElement('ul');
-  ul.className = 'mask-pv';
-  for (const f of pv.files) {
-    const li = document.createElement('li');
-    li.textContent = f.from === f.to ? `${f.from}` : `${f.from}  →  ${f.to}`;
-    if (f.unmatched || f.leak) li.className = 'flat-bad';
-    ul.append(li);
+  showPreview(box, (await r.json()) as RulePreview);
+});
+
+// --- 處理檔名（只改檔名：不動資料夾名稱、不需要密碼；可指定層數）---
+const ruleDlg = el<HTMLDialogElement>('rule-dlg');
+const ruleEditor = mountRuleEditor(el('rule-box'));
+const depthOf = () => Math.max(0, Math.min(8, Math.floor(Number(el<HTMLInputElement>('file-depth').value) || 0)));
+el('file-rule').addEventListener('click', () => {
+  if (!selDir) return;
+  el('rule-title').textContent = t().fileRuleTitle(selDir.split('/').pop()!);
+  el('rule-preview').textContent = '';
+  ruleEditor.refresh();
+  ruleDlg.showModal();
+});
+el('rule-cancel').addEventListener('click', () => ruleDlg.close());
+el('rule-preview-btn').addEventListener('click', async () => {
+  const box = el('rule-preview');
+  if (!selDir) return;
+  box.textContent = '…';
+  const r = await post('/api/file-rule', { path: selDir, rule: ruleEditor.rule(), depth: depthOf(), dry_run: true });
+  if (!r.ok) {
+    box.textContent = t().failed(await r.text());
+    return;
   }
-  if (pv.changed + (pv.unmatched || 0) > pv.files.length) ul.append(Object.assign(document.createElement('li'), { textContent: t().maskPreviewMore }));
-  box.append(ul);
+  showPreview(box, (await r.json()) as RulePreview);
+});
+el('rule-form').addEventListener('submit', async () => {
+  if (!selDir) return;
+  infoEl.textContent = '…';
+  const r = await post('/api/file-rule', { path: selDir, rule: ruleEditor.rule(), depth: depthOf() });
+  if (!r.ok) {
+    infoEl.textContent = t().failed(await r.text());
+    return;
+  }
+  const res = (await r.json()) as { files: number };
+  await browse(curDir);
+  infoEl.textContent = t().fileRuleDone(res.files);
 });
 
 el('mask-form').addEventListener('submit', async () => {

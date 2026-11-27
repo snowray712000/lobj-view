@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lobj-view · organize</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <script type="module" crossorigin src="/assets/organize-CTo0elrw.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/style-BN7HwmD4.js">
-    <link rel="stylesheet" crossorigin href="/assets/style-DUGaDjC-.css">
-    <link rel="stylesheet" crossorigin href="/assets/organize-CsXkNoHl.css">
+    <script type="module" crossorigin src="/assets/organize-gVsI3RUM.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/style-d3BuuEkq.js">
+    <link rel="stylesheet" crossorigin href="/assets/style-aej0ul3H.css">
+    <link rel="stylesheet" crossorigin href="/assets/organize-BJm2xfCZ.css">
     <link rel="stylesheet" crossorigin href="/assets/to-lobj2-Dft0Y1wI.css">
   </head>
   <body>
@@ -35,6 +35,8 @@
         <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip">重新命名</button>
         <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip">拿掉這層</button>
         <label class="dir-level" data-i18n-title="dirLevelTip"><span data-i18n="dirLevel">層</span> <input id="dir-level" type="number" min="0" max="8" value="0"></label>
+        <button id="file-rule" type="button" data-i18n="fileRule" data-i18n-title="fileRuleTip">處理檔名</button>
+        <label class="dir-level" data-i18n-title="fileRuleDepthTip" title="0＝底下所有檔案；N＝只處理第 N 層"><span data-i18n="dirLevel">層</span> <input id="file-depth" type="number" min="0" max="8" value="0"></label>
         <button id="dir-mask" type="button" data-i18n="dirMask" data-i18n-title="dirMaskTip">遮蔽名稱</button>
         <button id="dir-unmask" type="button" data-i18n="dirUnmask" data-i18n-title="dirUnmaskTip">還原名稱</button>
       </div>
@@ -50,6 +52,18 @@
         <button type="button" id="flat-ok">OK</button>
       </div>
     </dialog>
+    <dialog id="rule-dlg">
+      <form method="dialog" id="rule-form">
+        <div id="rule-title"></div>
+        <div id="rule-box"></div>
+        <button type="button" id="rule-preview-btn" data-i18n="maskPreview">預覽</button>
+        <div id="rule-preview" class="hint"></div>
+        <div class="mask-btns">
+          <button type="button" id="rule-cancel" data-i18n="cancel">取消</button>
+          <button type="submit" id="rule-ok" data-i18n="fileRuleRun">執行</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="mask-dlg">
       <form method="dialog" id="mask-form">
         <div id="mask-title"></div>
@@ -63,22 +77,7 @@
               <option value="rule" data-i18n="maskFilesRule">用規則（不可還原）</option>
             </select>
           </label>
-          <div id="mask-rule" hidden>
-            <div class="hint" data-i18n="maskRuleHint"></div>
-            <div class="sync-row">
-              <select id="mask-rule-saved" data-i18n-title="maskRuleSaved" title="已儲存的規則"></select>
-              <button type="button" id="mask-rule-del" data-i18n="maskRuleDel">刪除規則</button>
-            </div>
-            <div class="sync-row">
-              <select id="mask-kind"><option value="replace" data-i18n="maskKindReplace">取代</option><option value="keep" data-i18n="maskKindKeep">保留</option></select>
-              <input id="mask-pattern" type="text" spellcheck="false" data-i18n-placeholder="maskPattern" placeholder="regex">
-            </div>
-            <div class="sync-row"><input id="mask-repl" type="text" spellcheck="false" data-i18n-placeholder="maskReplacement" placeholder="取代成"></div>
-            <div class="sync-row">
-              <input id="mask-rule-name" type="text" spellcheck="false" data-i18n-placeholder="maskRuleName" placeholder="規則名稱">
-              <button type="button" id="mask-rule-save" data-i18n="maskRuleSave">儲存</button>
-            </div>
-          </div>
+          <div id="mask-rule" hidden></div>
           <button type="button" id="mask-preview-btn" data-i18n="maskPreview">預覽</button>
           <div id="mask-preview" class="hint"></div>
         </div>
