@@ -324,6 +324,16 @@ interface RulePreview {
   leaks: number;
   conflict: string | null;
 }
+const span = (cls: string, text: string): HTMLSpanElement => Object.assign(document.createElement('span'), { className: cls, textContent: text });
+/** 預覽的一個路徑：資料夾部分灰色、主檔名（取代前 / 後各一色）、副檔名（同一色）。 */
+function pvName(path: string, stemCls: string): HTMLSpanElement[] {
+  const i = path.lastIndexOf('/');
+  const dir = path.slice(0, i + 1);
+  const name = path.slice(i + 1);
+  const d = name.lastIndexOf('.');
+  const [stem, ext] = d > 0 ? [name.slice(0, d), name.slice(d)] : [name, ''];
+  return [span('pv-dir', dir), span(stemCls, stem), span('pv-ext', ext)].filter((e) => e.textContent);
+}
 function showPreview(box: HTMLElement, pv: RulePreview): void {
   const lines = [t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
   if (pv.conflict) lines.push(t().maskPreviewConflict(pv.conflict));
@@ -332,8 +342,9 @@ function showPreview(box: HTMLElement, pv: RulePreview): void {
   ul.className = 'mask-pv';
   for (const f of pv.files) {
     const li = document.createElement('li');
-    li.textContent = f.from === f.to ? f.from : `${f.from}  →  ${f.to}`;
-    if (f.unmatched || f.leak) li.className = 'flat-bad';
+    if (f.unmatched || f.leak) li.append(span('pv-warn', '⚠ '));
+    li.append(...pvName(f.from, 'pv-old'));
+    if (f.from !== f.to) li.append(span('pv-arrow', '  →  '), ...pvName(f.to, 'pv-new'));
     ul.append(li);
   }
   if (pv.files.length >= 300) ul.append(Object.assign(document.createElement('li'), { textContent: t().maskPreviewMore }));

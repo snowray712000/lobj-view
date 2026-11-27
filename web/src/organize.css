@@ -41,3 +41,22 @@
   flex: 1;
   min-width: 0;
 }
+/* 預覽配色（Apple 色票）：路徑灰、取代前主檔名橘、取代後主檔名綠、副檔名藍 */
+.mask-pv .pv-dir {
+  color: var(--secondaryLabel);
+}
+.mask-pv .pv-old {
+  color: var(--systemOrange);
+}
+.mask-pv .pv-new {
+  color: var(--systemGreen);
+}
+.mask-pv .pv-ext {
+  color: var(--systemBlue);
+}
+.mask-pv .pv-arrow {
+  color: var(--secondaryLabel);
+}
+.mask-pv .pv-warn {
+  color: var(--systemRed);
+}
