@@ -427,7 +427,8 @@ fn preview_json(plan: &MaskPlan) -> String {
 }
 
 /// 只處理檔名（不動資料夾名稱、不需要密碼）：把規則套在所選資料夾底下的檔案主檔名。
-/// body：`{ "path": 資料夾, "rule": {kind, pattern, replacement}, "depth"?: N, "dry_run"?: bool }`；
+/// body：`{ "path": 資料夾, "rule": {kind, pattern, replacement}, "depth"?: N, "target"?: "files" | "dirs", "dry_run"?: bool }`；
+/// `target: "dirs"` 改成處理子資料夾的名稱（整個名稱都算主檔名；由深到淺改名）。
 /// `depth` 省略或 0＝底下所有檔案（遞迴）；N ≥ 1＝只處理第 N 層的檔案（1＝直接在所選資料夾裡）。
 /// 預覽格式同 `/api/dir-mask`（`folders` 恆為 0、`leaks` 恆為 0）；有衝突就整批不動（409）。回 `{ "files": 改了幾個 }`。
 async fn file_rule(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
@@ -437,20 +438,27 @@ async fn file_rule(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(b
         let depth = body.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
         let fm = parse_file_mode(Some(&serde_json::json!({ "mode": "rule", "rule": body.get("rule").cloned().unwrap_or_default() })))?;
         let top = any_dir(&shared, &str_of(&body, "path"))?;
+        let dirs_mode = str_of(&body, "target") == "dirs";
+        let root = shared.root();
         let plan = tokio::task::spawn_blocking(move || -> Result<MaskPlan, Fail> {
             let mut p = MaskPlan { top: top.clone(), dirs: Vec::new(), files: Vec::new(), unmatched: 0, conflict: None };
             let mut seen = std::collections::HashSet::new();
-            let mut all = files_under(&top).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            all.sort();
+            let ise = |e: std::io::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+            let mut all = if dirs_mode { dirs_under(&top).map_err(ise)? } else { files_under(&top).map_err(ise)? };
+            // 資料夾由深到淺改名（子資料夾先改，父資料夾的路徑才不會失效）
+            all.sort_by(|a, b| if dirs_mode { b.components().count().cmp(&a.components().count()).then(a.cmp(b)) } else { a.cmp(b) });
             for f in all {
                 let comps = f.strip_prefix(&top).map(|r| r.components().count()).unwrap_or(0);
                 if depth > 0 && comps != depth {
                     continue;
                 }
                 let fname = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                let (nf, matched) = apply_rule(&fname, &fm);
+                if dirs_mode && root.starts_with(&f) {
+                    continue; // 根資料夾在裡面，不能改名
+                }
+                let (nf, matched) = apply_rule(&fname, &fm, dirs_mode);
                 if nf.is_empty() || !valid_dir_name(&nf) {
-                    return Err(bad(format!("{fname}: 換名後檔名不合法（空白或太長）")));
+                    return Err(bad(format!("{fname}: 換名後名稱不合法（空白或太長）")));
                 }
                 let to = f.with_file_name(&nf);
                 if p.conflict.is_none() && (!seen.insert(to.clone()) || (to != f && to.exists())) {
@@ -534,10 +542,10 @@ struct MaskPlan {
     conflict: Option<String>,
 }
 
-/// 規則套在主檔名（不含副檔名）；回 `(新檔名, 是否符合)`。
-fn apply_rule(fname: &str, fm: &FileMode) -> (String, bool) {
+/// 規則套在主檔名（不含副檔名；資料夾名稱整個都算主檔名）；回 `(新檔名, 是否符合)`。
+fn apply_rule(fname: &str, fm: &FileMode, is_dir: bool) -> (String, bool) {
     let (stem, ext) = match fname.rfind('.') {
-        Some(i) if i > 0 => fname.split_at(i),
+        Some(i) if i > 0 && !is_dir => fname.split_at(i),
         _ => (fname, ""),
     };
     match fm {
@@ -575,7 +583,7 @@ fn mask_plan(top: &std::path::Path, root: &std::path::Path, password: &str, enco
                 FileMode::None => (fname.clone(), true),
                 // 只替換資料夾名稱那一段，其餘（upper/lower、step…）保持原樣，才不影響依檔名判斷上下顎
                 FileMode::Encode => (fname.replace(&old, &new), true),
-                _ if encode => apply_rule(&fname, fm),
+                _ if encode => apply_rule(&fname, fm, false),
                 _ => (fname.clone(), true), // 規則不可逆，還原時不動檔名
             };
             let unmatched = !matched;
@@ -602,6 +610,18 @@ fn mask_plan(top: &std::path::Path, root: &std::path::Path, password: &str, enco
         p.conflict = Some("名稱衝突".into());
     }
     Ok(p)
+}
+
+/// `dir` 底下所有子資料夾（遞迴，不含符號連結，不含 `dir` 自己）。
+fn dirs_under(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir)?.filter_map(Result::ok) {
+        if e.file_type()?.is_dir() {
+            out.push(e.path());
+            out.extend(dirs_under(&e.path())?);
+        }
+    }
+    Ok(out)
 }
 
 /// `dir` 底下所有檔案（遞迴，不含符號連結）。

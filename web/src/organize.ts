@@ -227,10 +227,13 @@ function saveRules(v: MaskRule[]): void {
   }
 }
 const LAST_KEY = 'lobj-view-last-file-rule';
+/** 規則套用的對象：檔名或資料夾名稱（各自記住上次的規則與層數） */
+let ruleKind: 'files' | 'dirs' = 'files';
+const lastKey = () => (ruleKind === 'files' ? LAST_KEY : `${LAST_KEY}-dirs`);
 /** 上一次「處理檔名」成功執行的規則與層數；再開對話框時預填（同結構的資料集往上一層繼續用）。 */
 function loadLast(): (RuleBody & { depth: number }) | null {
   try {
-    const v = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null');
+    const v = JSON.parse(localStorage.getItem(lastKey()) ?? 'null');
     return v && typeof v.pattern === 'string' ? v : null;
   } catch {
     return null;
@@ -238,7 +241,7 @@ function loadLast(): (RuleBody & { depth: number }) | null {
 }
 function saveLast(r: RuleBody, depth: number): void {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify({ ...r, depth }));
+    localStorage.setItem(lastKey(), JSON.stringify({ ...r, depth }));
   } catch {
     /* 存不了就算了 */
   }
@@ -252,7 +255,7 @@ interface RuleBody {
 }
 
 /** 規則編輯器（取代 / 保留 + regex + 命名儲存）：遮蔽對話框與「處理檔名」對話框共用，各掛在自己的容器裡。 */
-function mountRuleEditor(box: HTMLElement): { rule(): RuleBody; refresh(): void } {
+function mountRuleEditor(box: HTMLElement): { rule(): RuleBody; refresh(): void; clear(): void } {
   box.innerHTML = `
     <div class="hint" data-r="hint"></div>
     <div class="sync-row"><select data-r="saved"></select><button type="button" data-r="del"></button></div>
@@ -313,7 +316,16 @@ function mountRuleEditor(box: HTMLElement): { rule(): RuleBody; refresh(): void 
     render();
   });
   refresh();
-  return { rule: () => ({ kind: kind.value as RuleBody['kind'], pattern: pattern.value, replacement: repl.value }), refresh };
+  return {
+    rule: () => ({ kind: kind.value as RuleBody['kind'], pattern: pattern.value, replacement: repl.value }),
+    refresh,
+    clear: () => {
+      pattern.value = '';
+      repl.value = '';
+      name.value = '';
+      saved.value = '';
+    },
+  };
 }
 
 interface RulePreview {
@@ -326,16 +338,16 @@ interface RulePreview {
 }
 const span = (cls: string, text: string): HTMLSpanElement => Object.assign(document.createElement('span'), { className: cls, textContent: text });
 /** 預覽的一個路徑：資料夾部分灰色、主檔名（取代前 / 後各一色）、副檔名（同一色）。 */
-function pvName(path: string, stemCls: string): HTMLSpanElement[] {
+function pvName(path: string, stemCls: string, isDir = false): HTMLSpanElement[] {
   const i = path.lastIndexOf('/');
   const dir = path.slice(0, i + 1);
   const name = path.slice(i + 1);
   const d = name.lastIndexOf('.');
-  const [stem, ext] = d > 0 ? [name.slice(0, d), name.slice(d)] : [name, ''];
+  const [stem, ext] = d > 0 && !isDir ? [name.slice(0, d), name.slice(d)] : [name, ''];
   return [span('pv-dir', dir), span(stemCls, stem), span('pv-ext', ext)].filter((e) => e.textContent);
 }
-function showPreview(box: HTMLElement, pv: RulePreview): void {
-  const lines = [t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
+function showPreview(box: HTMLElement, pv: RulePreview, isDir = false): void {
+  const lines = [isDir ? t().folderRulePreviewSummary(pv.changed, pv.unmatched) : t().maskPreviewSummary(pv.folders, pv.changed, pv.unmatched, pv.leaks)];
   if (pv.conflict) lines.push(t().maskPreviewConflict(pv.conflict));
   box.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
   const ul = document.createElement('ul');
@@ -343,8 +355,8 @@ function showPreview(box: HTMLElement, pv: RulePreview): void {
   for (const f of pv.files) {
     const li = document.createElement('li');
     if (f.unmatched || f.leak) li.append(span('pv-warn', '⚠ '));
-    li.append(...pvName(f.from, 'pv-old'));
-    if (f.from !== f.to) li.append(span('pv-arrow', '  →  '), ...pvName(f.to, 'pv-new'));
+    li.append(...pvName(f.from, 'pv-old', isDir));
+    if (f.from !== f.to) li.append(span('pv-arrow', '  →  '), ...pvName(f.to, 'pv-new', isDir));
     ul.append(li);
   }
   if (pv.files.length >= 300) ul.append(Object.assign(document.createElement('li'), { textContent: t().maskPreviewMore }));
@@ -373,6 +385,7 @@ function openMask(mode: 'encode' | 'decode'): void {
   el('mask-ok').textContent = mode === 'encode' ? t().dirMask : t().dirUnmask;
   maskPass.value = '';
   el('mask-preview').textContent = '';
+  ruleKind = 'files';
   // 還原時只有「檔名內的資料夾名稱一併編碼」需要選擇（規則不可逆，還原時不作用）
   for (const o of el<HTMLSelectElement>('mask-files').options) o.hidden = mode === 'decode' && o.value === 'rule';
   if (mode === 'decode' && el<HTMLSelectElement>('mask-files').value === 'rule') el<HTMLSelectElement>('mask-files').value = 'none';
@@ -410,28 +423,34 @@ const ruleEditor = mountRuleEditor(el('rule-box'));
 const depthOf = () => Math.max(0, Math.min(8, Math.floor(Number(el<HTMLInputElement>('file-depth').value) || 0)));
 /** 處理檔名的對象：有選資料夾就是它，否則是目前正在看的資料夾（看著清單寫規則）。 */
 const ruleTarget = () => selDir ?? curDir;
-el('file-rule').addEventListener('click', () => {
-  el('rule-title').textContent = t().fileRuleTitle(ruleTarget().split('/').pop() || '/');
+function openRule(kind: 'files' | 'dirs'): void {
+  ruleKind = kind;
+  const n = ruleTarget().split('/').pop() || '/';
+  el('rule-title').textContent = kind === 'files' ? t().fileRuleTitle(n) : t().folderRuleTitle(n);
   el('rule-preview').textContent = '';
   const last = loadLast();
-  if (last) el<HTMLInputElement>('file-depth').value = String(last.depth);
+  el<HTMLInputElement>('file-depth').value = String(last?.depth ?? 1);
+  // 換對象時預填上次用在這個對象的規則
+  ruleEditor.clear();
   ruleEditor.refresh();
   ruleDlg.showModal();
-});
+}
+el('file-rule').addEventListener('click', () => openRule('files'));
+el('folder-rule').addEventListener('click', () => openRule('dirs'));
 el('rule-cancel').addEventListener('click', () => ruleDlg.close());
 el('rule-preview-btn').addEventListener('click', async () => {
   const box = el('rule-preview');
   box.textContent = '…';
-  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf(), dry_run: true });
+  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf(), target: ruleKind, dry_run: true });
   if (!r.ok) {
     box.textContent = t().failed(await r.text());
     return;
   }
-  showPreview(box, (await r.json()) as RulePreview);
+  showPreview(box, (await r.json()) as RulePreview, ruleKind === 'dirs');
 });
 el('rule-form').addEventListener('submit', async () => {
   infoEl.textContent = '…';
-  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf() });
+  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf(), target: ruleKind });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
     return;
@@ -439,7 +458,7 @@ el('rule-form').addEventListener('submit', async () => {
   saveLast(ruleEditor.rule(), depthOf());
   const res = (await r.json()) as { files: number };
   await browse(curDir);
-  infoEl.textContent = t().fileRuleDone(res.files);
+  infoEl.textContent = ruleKind === 'dirs' ? t().folderRuleDone(res.files) : t().fileRuleDone(res.files);
 });
 
 el('mask-form').addEventListener('submit', async () => {
