@@ -367,10 +367,11 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
         let top = any_dir(&shared, &str_of(&body, "path"))?;
         let root = shared.root();
         let password = password.to_owned();
-        let plan = tokio::task::spawn_blocking(move || -> Result<Vec<(PathBuf, PathBuf)>, Fail> {
+        let (plan, file_plan) = tokio::task::spawn_blocking(move || -> Result<MaskPlan, Fail> {
             let key = crate::namemask::derive_key(&password);
             let dirs = sub_dirs(&top).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let mut plan = Vec::new();
+            let mut file_plan: Vec<(PathBuf, PathBuf)> = Vec::new();
             for d in dirs {
                 if root.starts_with(&d) {
                     return Err(bad("根資料夾在這些資料夾裡面，無法改名"));
@@ -380,6 +381,25 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
                 if !valid_dir_name(&new) {
                     return Err(bad(format!("{old}: 還原後的名稱不合法")));
                 }
+                // 檔名裡常內嵌資料夾名稱（例如 `Template4_upper_..._93413335A_姓名.lobj`），一併換掉；
+                // 只替換資料夾名稱那一段，其餘（upper/lower、step…）保持原樣，才不影響依檔名判斷上下顎。
+                let mut fs = Vec::new();
+                for f in files_under(&d).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))? {
+                    let fname = f.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    if !fname.contains(&old) {
+                        continue;
+                    }
+                    let nf = fname.replace(&old, &new);
+                    if !valid_dir_name(&nf) {
+                        return Err(bad(format!("{fname}: 換名後檔名不合法（可能太長）")));
+                    }
+                    fs.push((f.clone(), f.with_file_name(nf)));
+                }
+                let mut seen = std::collections::HashSet::new();
+                if fs.iter().any(|(_, n)| !seen.insert(n.clone()) || n.exists()) {
+                    return Err((StatusCode::CONFLICT, "檔名衝突，未做任何變更".into()));
+                }
+                file_plan.extend(fs);
                 plan.push((d.clone(), d.with_file_name(new)));
             }
             let olds: std::collections::HashSet<&PathBuf> = plan.iter().map(|(o, _)| o).collect();
@@ -387,10 +407,14 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
             if news.len() != plan.len() || plan.iter().any(|(_, n)| n.exists() && !olds.contains(n)) {
                 return Err((StatusCode::CONFLICT, "名稱衝突，未做任何變更".into()));
             }
-            Ok(plan)
+            Ok((plan, file_plan))
         })
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+        // 先改檔名（此時資料夾還在原路徑），再改資料夾名稱
+        for (old, new) in &file_plan {
+            std::fs::rename(old, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
         // 新名稱可能剛好是另一個要改名的舊名稱：先全部改成暫名再改成最終名稱，避免互相覆蓋
         let mut stage = Vec::new();
         for (i, (old, new)) in plan.iter().enumerate() {
@@ -401,9 +425,25 @@ async fn dir_mask(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(bo
         for (tmp, new) in &stage {
             std::fs::rename(tmp, new).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         }
-        Ok(format!("{{\"count\":{}}}", plan.len()))
+        Ok(format!("{{\"count\":{},\"files\":{}}}", plan.len(), file_plan.len()))
     }
     .await)
+}
+
+type MaskPlan = (Vec<(PathBuf, PathBuf)>, Vec<(PathBuf, PathBuf)>);
+
+/// `dir` 底下所有檔案（遞迴，不含符號連結）。
+fn files_under(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir)?.filter_map(Result::ok) {
+        let t = e.file_type()?;
+        if t.is_dir() {
+            out.extend(files_under(&e.path())?);
+        } else if t.is_file() {
+            out.push(e.path());
+        }
+    }
+    Ok(out)
 }
 
 /// rsync 的 `--info=progress2` 輸出形如 `  12,345,678  37%   10.50MB/s    0:00:05`（以 `\r` 更新同一行）。

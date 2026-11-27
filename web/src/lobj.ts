@@ -102,8 +102,9 @@ export interface LobjListing {
 }
 
 /** 列出資料夾；path 可用 / 或 \，也可以直接指到檔案。不可超出後端的 --dir。 */
-export async function listLobj(path = '', signal?: AbortSignal): Promise<LobjListing> {
-  const r = await fetch(`/api/lobj?path=${encodeURIComponent(path)}`, { signal });
+/** `all`：檔案不限副檔名（整理頁用）。 */
+export async function listLobj(path = '', signal?: AbortSignal, all = false): Promise<LobjListing> {
+  const r = await fetch(`/api/lobj?path=${encodeURIComponent(path)}${all ? '&all=1' : ''}`, { signal });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }

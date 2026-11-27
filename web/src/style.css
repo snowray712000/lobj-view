@@ -977,3 +977,26 @@ body {
   margin: 2px 0 8px;
   padding-left: 18px;
 }
+
+/* 頁面切換列：檢視 / 整理 / 轉 lobj2 / 統計（每個頁面最上方） */
+.topnav {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.topnav a {
+  padding: 1px 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+.topnav a:hover {
+  border-color: var(--separator, rgba(128, 128, 128, 0.4));
+}
+.topnav a[aria-current='page'] {
+  background: var(--systemBlue, #0a84ff);
+  color: #fff;
+}

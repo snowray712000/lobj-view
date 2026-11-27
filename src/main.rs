@@ -425,6 +425,7 @@ async fn static_handler(uri: Uri) -> Response {
         "" => "index.html",
         "to-lobj2" | "to-lobj2/" => "to-lobj2.html",
         "stat" | "stat/" => "stat.html",
+        "organize" | "organize/" => "organize.html",
         p => p,
     };
 

@@ -1,0 +1,12 @@
+/* 整理頁：清單樣式沿用 style.css 的 #files；頁面版面沿用 to-lobj2.css */
+#info {
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+#l2.org #zip-dir {
+  flex: none;
+}
+#files li.file {
+  cursor: default;
+  color: var(--secondaryLabel);
+}

@@ -882,7 +882,7 @@ version = "1.1.1"
 
 [[package]]
 name = "lobj-view"
-version = "1.20.5"
+version = "1.20.6"
 dependencies = [
  "anyhow",
  "axum",

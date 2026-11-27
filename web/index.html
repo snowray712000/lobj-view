@@ -11,6 +11,7 @@
     <div id="hud">
       <div id="hud-resize" data-i18n-title="hudResizeTip" title="拖曳調整左側寬度（雙擊還原）"></div>
       <div id="status" class="box">
+        <nav class="topnav" data-i18n-title="navTip" title="切換頁面"><a href="/" aria-current="page" data-i18n="navView">檢視</a><a href="/organize" data-i18n="navOrganize">整理</a><a href="/to-lobj2" data-i18n="navToLobj2">轉 lobj2</a><a href="/stat" data-i18n="navStat">統計</a></nav>
         <b>lobj-view</b> @ccu-cadcam
         <button id="ver" type="button" data-i18n-title="verTip" title="查看版本紀錄">…</button>
         <button id="update-btn" type="button" data-i18n="checkUpdate" data-i18n-title="updateTip" title="檢查 GitHub 上有沒有新版">檢查更新</button>
@@ -43,27 +44,11 @@
         <div id="browser-body">
           <div>
             <button id="picker-open" type="button" data-i18n="pickerBtn" data-i18n-title="pickerBtnTip" title="開啟資料夾選擇對話框">瀏覽…</button>
-            <button id="zip-dir" type="button" data-i18n="zipDir" data-i18n-title="zipDirTip" title="把目前資料夾壓縮成同層的「資料夾名.zip」（用來傳到另一台電腦）">壓縮資料夾</button>
             <input id="path" type="text" spellcheck="false" data-i18n-placeholder="pathPh" placeholder="貼上路徑後按 Enter（/ 或 \ 皆可）" />
             <input id="jaw-re" type="text" spellcheck="false" value="upper;_u_;u\d+-;ur" data-i18n-placeholder="jawRePh" placeholder="upper 的 regex，; 分隔" />
           </div>
           <div class="hint" data-i18n="selectHint">Ctrl/⌘ 點擊加選、Shift 點擊範圍選取、雙擊只開這一個</div>
           <ul id="files"></ul>
-          <div id="zip-actions" hidden>
-            <span id="zip-sel"></span>
-            <button id="zip-sync" type="button" data-i18n="zipSync" data-i18n-title="zipSyncTip" title="用 rsync（ssh）把所選的 zip 傳到另一台電腦">同步到…</button>
-            <button id="zip-extract" type="button" data-i18n="zipExtract" data-i18n-title="zipExtractTip" title="把所選的 zip 解壓縮到同層">解壓縮</button>
-            <button id="zip-del" type="button" data-i18n="zipDel" data-i18n-title="zipDelTip" title="刪除所選的 zip 檔（無法復原）">刪除</button>
-          </div>
-          <div id="dir-actions" hidden>
-            <span id="dir-sel"></span>
-            <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip" title="重新命名所選的資料夾">重新命名</button>
-            <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip" title="把所選資料夾裡的項目移到上一層，再刪除這個空資料夾">拿掉這層</button>
-            <label class="dir-level" data-i18n-title="dirLevelTip" title="0＝所選資料夾本身；N＝所選資料夾底下第 N 層的每個資料夾（例如在 R 填 2，R/aa1/lobj、R/aa2/lobj 都被拿掉）"><span data-i18n="dirLevel">層</span> <input id="dir-level" type="number" min="0" max="8" value="0"></label>
-            <button id="dir-mask" type="button" data-i18n="dirMask" data-i18n-title="dirMaskTip" title="把所選資料夾底下第一層子資料夾的名稱遮蔽成 a-z2-7（可用密碼還原）">遮蔽名稱</button>
-            <button id="dir-unmask" type="button" data-i18n="dirUnmask" data-i18n-title="dirUnmaskTip" title="用密碼把遮蔽過的子資料夾名稱還原">還原名稱</button>
-          </div>
-          <div id="op-progress" hidden><progress id="op-bar" max="100" value="0"></progress> <span id="op-text"></span></div>
           <div id="info"></div>
         </div>
       </div>
@@ -94,44 +79,6 @@
     <div id="versions" hidden>
       <div class="dlg-head"><b>Versions</b><label class="ver-detail"><input id="versions-detail" type="checkbox" /> <span data-i18n="details">細節</span></label><button id="versions-close" type="button">✕</button></div>
       <div id="versions-body"></div>
-    </div>
-    <dialog id="flat-dlg">
-      <div id="flat-title"></div>
-      <div id="flat-body"></div>
-      <div class="mask-btns">
-        <button type="button" id="flat-cancel" data-i18n="cancel">取消</button>
-        <button type="button" id="flat-ok">OK</button>
-      </div>
-    </dialog>
-    <dialog id="mask-dlg">
-      <form method="dialog" id="mask-form">
-        <div id="mask-title"></div>
-        <div id="mask-hint" class="hint"></div>
-        <input id="mask-pass" type="password" autocomplete="off" data-i18n-placeholder="maskPass" placeholder="密碼">
-        <div class="mask-btns">
-          <button type="button" id="mask-cancel" data-i18n="cancel">取消</button>
-          <button type="submit" id="mask-ok">OK</button>
-        </div>
-      </form>
-    </dialog>
-    <div id="sync" hidden>
-      <div class="dlg-head"><b data-i18n="syncTitle">同步到另一台電腦</b><button id="sync-close" type="button">✕</button></div>
-      <div id="sync-body">
-        <div id="sync-file"></div>
-        <div class="sync-row">
-          <input id="sync-host" type="text" spellcheck="false" placeholder="user@host" />
-          <button id="sync-connect" type="button" data-i18n="syncConnect">連線</button>
-        </div>
-        <div class="sync-row"><input id="sync-pass" type="password" autocomplete="off" data-i18n-placeholder="syncPassPh" placeholder="密碼（金鑰密碼或 ssh 登入密碼；有 ssh-agent / 免密碼金鑰可留空）" /></div>
-        <div class="sync-row"><input id="sync-dir" type="text" spellcheck="false" data-i18n-placeholder="syncDirPh" placeholder="遠端資料夾（空白＝家目錄），Enter 列出" /></div>
-        <ul id="sync-list"></ul>
-        <label id="sync-bg-wrap" data-i18n-title="syncBgTip" title="在本機的 tmux 裡執行：關掉 ssh 或網頁都不會中斷"><input id="sync-bg" type="checkbox" /> <span data-i18n="syncBg">背景執行（tmux）</span></label>
-        <progress id="sync-bar" max="100" value="0" hidden></progress>
-        <div id="sync-msg" class="msg"></div>
-        <div class="sync-row"><button id="sync-go" type="button" data-i18n="syncGo">同步到這個資料夾</button></div>
-        <div id="sync-jobs-title" class="hint" hidden><span data-i18n="syncJobs">背景工作</span> <button id="sync-jobs-clear" type="button" data-i18n="jobClearAll" data-i18n-title="jobClearAllTip" title="清除所有已結束（完成 / 失敗 / 已中止）的紀錄，執行中的不受影響">清除已結束</button></div>
-        <ul id="sync-jobs"></ul>
-      </div>
     </div>
     <div id="assoc" hidden>
       <div class="dlg-head"><b data-i18n="assocTitle">預設開啟程式</b><button id="assoc-close" type="button">✕</button></div>

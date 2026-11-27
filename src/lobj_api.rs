@@ -355,10 +355,11 @@ struct Listing {
 
 #[cfg(test)]
 fn list_dir(root: &Path, input: &str, cancel: &AtomicBool) -> Result<Listing, ApiErr> {
-    list_dir_ex(root, input, cancel, false)
+    list_dir_ex(root, input, cancel, false, false)
 }
 
-fn list_dir_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool) -> Result<Listing, ApiErr> {
+/// `all`：檔案不限副檔名都列出（整理頁用）；否則只列支援的 .lobj / .lobj2 / .stl / .obj / .ply。
+fn list_dir_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool, all: bool) -> Result<Listing, ApiErr> {
     let mut r = resolve_ex(root, input, cancel, unrestricted)?;
     let fname = r.real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if r.real.is_file() && zipfs::is_zip_name(&fname) {
@@ -366,7 +367,7 @@ fn list_dir_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool
         r = descend(r.real.clone(), r.virt.clone(), PathBuf::new(), cancel)?;
     }
     let (dir, dir_virt, selected) = if r.real.is_file() {
-        if !is_lobj_name(&fname) {
+        if !all && !is_lobj_name(&fname) {
             return Err(err(StatusCode::BAD_REQUEST, "不是 .lobj / .lobj2 / .stl / .obj / .ply 檔"));
         }
         let pv = parent_virt(&r.virt).unwrap_or_default();
@@ -391,7 +392,7 @@ fn list_dir_ex(root: &Path, input: &str, cancel: &AtomicBool, unrestricted: bool
         } else if zipfs::is_zip_name(&name) {
             zips.push(name.clone());
             dirs.push(name);
-        } else if is_lobj_name(&name) {
+        } else if all || is_lobj_name(&name) {
             files.push((name, real.metadata().map(|m| m.len()).unwrap_or(0)));
         }
     }
@@ -410,10 +411,11 @@ async fn list(State(shared): State<Arc<Shared>>, Query(q): Query<HashMap<String,
     let root = shared.root();
     let unrestricted = shared.local_only();
     let input = q.get("path").cloned().unwrap_or_default();
+    let all = q.get("all").is_some_and(|v| v == "1");
     // 前端中斷連線時這個 future 會被丟棄，guard 隨之讓背景的解壓停下來
     let cancel = Arc::new(AtomicBool::new(false));
     let _guard = CancelOnDrop(cancel.clone());
-    match tokio::task::spawn_blocking(move || list_dir_ex(&root, &input, &cancel, unrestricted)).await {
+    match tokio::task::spawn_blocking(move || list_dir_ex(&root, &input, &cancel, unrestricted, all)).await {
         Ok(Ok(l)) => {
             let names = |v: &[String]| v.iter().map(|d| json_string(d)).collect::<Vec<_>>().join(",");
             let (dirs, zips) = (names(&l.dirs), names(&l.zips));
@@ -690,10 +692,10 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(base.join("out.lobj"), b"x").unwrap();
         let root = std::fs::canonicalize(&root).unwrap();
-        let l = list_dir_ex(&root, "", &no(), true).unwrap();
+        let l = list_dir_ex(&root, "", &no(), true, false).unwrap();
         assert!(l.up.is_some());
         let up = l.up.unwrap();
-        let l = list_dir_ex(&root, &up, &no(), true).unwrap();
+        let l = list_dir_ex(&root, &up, &no(), true, false).unwrap();
         assert!(l.files.iter().any(|f| f.0 == "out.lobj"));
         assert!(l.dirs.contains(&"root".to_string()));
         assert!(resolve_ex(&root, "../out.lobj", &no(), true).is_ok());

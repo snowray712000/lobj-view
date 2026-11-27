@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lobj-view · organize</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <script type="module" crossorigin src="/assets/organize-ByGOFfS8.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/style-pjnR5Tcb.js">
+    <link rel="stylesheet" crossorigin href="/assets/style-DUGaDjC-.css">
+    <link rel="stylesheet" crossorigin href="/assets/organize-BHg9DyuQ.css">
+    <link rel="stylesheet" crossorigin href="/assets/to-lobj2-Dft0Y1wI.css">
+  </head>
+  <body>
+    <main id="l2" class="org">
+      <nav class="topnav" data-i18n-title="navTip" title="切換頁面"><a href="/" data-i18n="navView">檢視</a><a href="/organize" aria-current="page" data-i18n="navOrganize">整理</a><a href="/to-lobj2" data-i18n="navToLobj2">轉 lobj2</a><a href="/stat" data-i18n="navStat">統計</a></nav>
+      <h1 data-i18n="orgTitle">整理資料夾</h1>
+      <p class="hint" data-i18n="orgHint"></p>
+      <div class="row">
+        <button id="l2-up" type="button" data-i18n="l2Up">↑ 上一層</button>
+        <button id="picker-open" type="button" data-i18n="pickerBtn" data-i18n-title="pickerBtnTip">瀏覽…</button>
+        <input id="path" type="text" spellcheck="false" data-i18n-placeholder="l2PathPh" />
+        <button id="org-go" type="button" data-i18n="l2Go">前往</button>
+        <label data-i18n-title="orgAllFilesTip"><input id="org-all" type="checkbox" /> <span data-i18n="orgAllFiles">所有檔案</span></label>
+        <button id="zip-dir" type="button" data-i18n="zipDir" data-i18n-title="zipDirTip" title="把目前資料夾壓縮成同層的「資料夾名.zip」">壓縮資料夾</button>
+      </div>
+      <div id="zip-actions" class="row" hidden>
+        <b id="zip-sel"></b>
+        <button id="zip-sync" type="button" data-i18n="zipSync" data-i18n-title="zipSyncTip">同步到…</button>
+        <button id="zip-extract" type="button" data-i18n="zipExtract" data-i18n-title="zipExtractTip">解壓縮</button>
+        <button id="zip-del" type="button" data-i18n="zipDel" data-i18n-title="zipDelTip">刪除</button>
+      </div>
+      <div id="dir-actions" class="row" hidden>
+        <b id="dir-sel"></b>
+        <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip">重新命名</button>
+        <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip">拿掉這層</button>
+        <label class="dir-level" data-i18n-title="dirLevelTip"><span data-i18n="dirLevel">層</span> <input id="dir-level" type="number" min="0" max="8" value="0"></label>
+        <button id="dir-mask" type="button" data-i18n="dirMask" data-i18n-title="dirMaskTip">遮蔽名稱</button>
+        <button id="dir-unmask" type="button" data-i18n="dirUnmask" data-i18n-title="dirUnmaskTip">還原名稱</button>
+      </div>
+      <div id="op-progress" hidden><progress id="op-bar" max="100" value="0"></progress> <span id="op-text"></span></div>
+      <div id="info"></div>
+      <ul id="files"></ul>
+    </main>
+    <dialog id="flat-dlg">
+      <div id="flat-title"></div>
+      <div id="flat-body"></div>
+      <div class="mask-btns">
+        <button type="button" id="flat-cancel" data-i18n="cancel">取消</button>
+        <button type="button" id="flat-ok">OK</button>
+      </div>
+    </dialog>
+    <dialog id="mask-dlg">
+      <form method="dialog" id="mask-form">
+        <div id="mask-title"></div>
+        <div id="mask-hint" class="hint"></div>
+        <input id="mask-pass" type="password" autocomplete="off" data-i18n-placeholder="maskPass" placeholder="密碼">
+        <div class="mask-btns">
+          <button type="button" id="mask-cancel" data-i18n="cancel">取消</button>
+          <button type="submit" id="mask-ok">OK</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="sync" hidden>
+      <div class="dlg-head"><b data-i18n="syncTitle">同步到另一台電腦</b><button id="sync-close" type="button">✕</button></div>
+      <div id="sync-body">
+        <div id="sync-file"></div>
+        <div class="sync-row">
+          <input id="sync-host" type="text" spellcheck="false" placeholder="user@host" />
+          <button id="sync-connect" type="button" data-i18n="syncConnect">連線</button>
+        </div>
+        <div class="sync-row"><input id="sync-pass" type="password" autocomplete="off" data-i18n-placeholder="syncPassPh" placeholder="密碼（金鑰密碼或 ssh 登入密碼；有 ssh-agent / 免密碼金鑰可留空）" /></div>
+        <div class="sync-row"><input id="sync-dir" type="text" spellcheck="false" data-i18n-placeholder="syncDirPh" placeholder="遠端資料夾（空白＝家目錄），Enter 列出" /></div>
+        <ul id="sync-list"></ul>
+        <label id="sync-bg-wrap" data-i18n-title="syncBgTip" title="在本機的 tmux 裡執行：關掉 ssh 或網頁都不會中斷"><input id="sync-bg" type="checkbox" /> <span data-i18n="syncBg">背景執行（tmux）</span></label>
+        <progress id="sync-bar" max="100" value="0" hidden></progress>
+        <div id="sync-msg" class="msg"></div>
+        <div class="sync-row"><button id="sync-go" type="button" data-i18n="syncGo">同步到這個資料夾</button></div>
+        <div id="sync-jobs-title" class="hint" hidden><span data-i18n="syncJobs">背景工作</span> <button id="sync-jobs-clear" type="button" data-i18n="jobClearAll" data-i18n-title="jobClearAllTip" title="清除所有已結束（完成 / 失敗 / 已中止）的紀錄，執行中的不受影響">清除已結束</button></div>
+        <ul id="sync-jobs"></ul>
+      </div>
+    </div>
+    <div id="picker" hidden>
+      <div class="dlg-head"><b data-i18n="pickerTitle">選擇資料夾與檔案</b><label class="pk-alpha" data-i18n-title="pickerAlphaTip" title="背景透明度">◐ <input id="picker-alpha" type="range" min="0.3" max="1" step="0.05" value="0.85" /></label><button id="picker-close" type="button">✕</button></div>
+      <div id="picker-body">
+        <div id="picker-side"></div>
+        <div id="picker-main">
+          <div id="picker-bar">
+            <input id="picker-path" type="text" spellcheck="false" />
+            <button id="picker-pin" type="button">📍</button>
+          </div>
+          <ul id="picker-list"></ul>
+          <div id="picker-info" class="hint"></div>
+        </div>
+      </div>
+      <div id="picker-foot">
+        <span class="hint" data-i18n="pickerHint">點擊加入選取</span>
+        <button id="picker-do-open" type="button" data-i18n="pickerOpen" data-i18n-title="pickerOpenTip">開啟</button>
+      </div>
+    </div>
+  </body>
+</html>
