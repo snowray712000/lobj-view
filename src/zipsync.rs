@@ -356,7 +356,7 @@ async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json
 /// - `{"mode":"encode"}`：檔名裡內嵌的資料夾名稱一併換成同一個編碼（還原時換回來）；
 /// - `{"mode":"rule","rule":{"kind":"replace","pattern":re,"replacement":文字}}`：遮蔽時主檔名（不含副檔名）符合的部分換成文字（空白＝刪除）；
 /// - `{"mode":"rule","rule":{"kind":"keep","pattern":re}}`：遮蔽時主檔名只留第一個符合的部分。
-/// 規則不可逆（被刪掉的檔名不會回來）；還原時規則不作用。regex 為 Rust `regex` 語法（無 lookaround）。
+/// 規則不可逆（被刪掉的檔名不會回來）；還原時規則不作用。regex 為 Rust `regex` 語法（無 lookaround），不分大小寫。
 /// `dry_run: true` 只回預覽 `{ folders, files:[{from,to,unmatched,leak}], unmatched, leaks, conflict }`（files 最多 300 筆）。
 /// 先算好全部新名稱，任何一個失敗（例如還原時密碼錯誤）或新名稱衝突就整個不動。
 /// 密碼只用來導出金鑰，不記錄、不儲存。回 `{ "count": 資料夾數, "files": 改了幾個檔 }`。
@@ -505,7 +505,7 @@ fn parse_file_mode(v: Option<&serde_json::Value>) -> Result<FileMode, Fail> {
             if pat.is_empty() {
                 return Err(bad("規則的 regex 不可為空"));
             }
-            let re = regex::Regex::new(pat).map_err(|e| bad(format!("regex 錯誤：{e}")))?;
+            let re = regex::RegexBuilder::new(pat).case_insensitive(true).build().map_err(|e| bad(format!("regex 錯誤：{e}")))?;
             match r.get("kind").and_then(|x| x.as_str()).unwrap_or("") {
                 "replace" => Ok(FileMode::Replace(re, r.get("replacement").and_then(|x| x.as_str()).unwrap_or("").to_owned())),
                 "keep" => Ok(FileMode::Keep(re)),
