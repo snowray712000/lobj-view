@@ -49,6 +49,7 @@ function selectDir(full: string | null, isZip: boolean): void {
   for (const li of filesEl.querySelectorAll<HTMLLIElement>('li[data-dir]')) li.classList.toggle('sel', li.dataset.dir === selDir);
   // 目前就在某個 zip 裡面時，裡面的 zip / 資料夾是快取副本，不能操作
   zipActionsEl.hidden = !(selDir && isZip && !inZip());
+  document.getElementById('file-actions')!.hidden = inZip();
   document.getElementById('zip-sel')!.textContent = selDir ? selDir.split('/').pop()! : '';
   dirActionsEl.hidden = !(selDir && !isZip && !inZip());
   document.getElementById('dir-sel')!.textContent = selDir ? selDir.split('/').pop()! : '';
@@ -225,6 +226,23 @@ function saveRules(v: MaskRule[]): void {
     /* 存不了就只留在這次 */
   }
 }
+const LAST_KEY = 'lobj-view-last-file-rule';
+/** 上一次「處理檔名」成功執行的規則與層數；再開對話框時預填（同結構的資料集往上一層繼續用）。 */
+function loadLast(): (RuleBody & { depth: number }) | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null');
+    return v && typeof v.pattern === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+function saveLast(r: RuleBody, depth: number): void {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify({ ...r, depth }));
+  } catch {
+    /* 存不了就算了 */
+  }
+}
 let rules = loadRules();
 
 interface RuleBody {
@@ -263,6 +281,12 @@ function mountRuleEditor(box: HTMLElement): { rule(): RuleBody; refresh(): void 
     name.placeholder = t().maskRuleName;
     saved.title = t().maskRuleSaved;
     render(saved.value);
+    const last = loadLast();
+    if (!pattern.value && last) {
+      kind.value = last.kind;
+      pattern.value = last.pattern;
+      repl.value = last.replacement;
+    }
     syncKind();
   };
   saved.addEventListener('change', () => {
@@ -373,19 +397,21 @@ el('mask-preview-btn').addEventListener('click', async () => {
 const ruleDlg = el<HTMLDialogElement>('rule-dlg');
 const ruleEditor = mountRuleEditor(el('rule-box'));
 const depthOf = () => Math.max(0, Math.min(8, Math.floor(Number(el<HTMLInputElement>('file-depth').value) || 0)));
+/** 處理檔名的對象：有選資料夾就是它，否則是目前正在看的資料夾（看著清單寫規則）。 */
+const ruleTarget = () => selDir ?? curDir;
 el('file-rule').addEventListener('click', () => {
-  if (!selDir) return;
-  el('rule-title').textContent = t().fileRuleTitle(selDir.split('/').pop()!);
+  el('rule-title').textContent = t().fileRuleTitle(ruleTarget().split('/').pop() || '/');
   el('rule-preview').textContent = '';
+  const last = loadLast();
+  if (last) el<HTMLInputElement>('file-depth').value = String(last.depth);
   ruleEditor.refresh();
   ruleDlg.showModal();
 });
 el('rule-cancel').addEventListener('click', () => ruleDlg.close());
 el('rule-preview-btn').addEventListener('click', async () => {
   const box = el('rule-preview');
-  if (!selDir) return;
   box.textContent = '…';
-  const r = await post('/api/file-rule', { path: selDir, rule: ruleEditor.rule(), depth: depthOf(), dry_run: true });
+  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf(), dry_run: true });
   if (!r.ok) {
     box.textContent = t().failed(await r.text());
     return;
@@ -393,13 +419,13 @@ el('rule-preview-btn').addEventListener('click', async () => {
   showPreview(box, (await r.json()) as RulePreview);
 });
 el('rule-form').addEventListener('submit', async () => {
-  if (!selDir) return;
   infoEl.textContent = '…';
-  const r = await post('/api/file-rule', { path: selDir, rule: ruleEditor.rule(), depth: depthOf() });
+  const r = await post('/api/file-rule', { path: ruleTarget(), rule: ruleEditor.rule(), depth: depthOf() });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
     return;
   }
+  saveLast(ruleEditor.rule(), depthOf());
   const res = (await r.json()) as { files: number };
   await browse(curDir);
   infoEl.textContent = t().fileRuleDone(res.files);

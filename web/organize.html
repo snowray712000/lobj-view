@@ -19,6 +19,10 @@
         <label data-i18n-title="orgAllFilesTip"><input id="org-all" type="checkbox" /> <span data-i18n="orgAllFiles">所有檔案</span></label>
         <button id="zip-dir" type="button" data-i18n="zipDir" data-i18n-title="zipDirTip" title="把目前資料夾壓縮成同層的「資料夾名.zip」">壓縮資料夾</button>
       </div>
+      <div id="file-actions" class="row">
+        <button id="file-rule" type="button" data-i18n="fileRule" data-i18n-title="fileRuleTip">處理檔名</button>
+        <label class="dir-level" data-i18n-title="fileRuleDepthTip" title="1＝這個資料夾裡的檔案；2＝再往下一層的資料夾裡；0＝底下所有檔案"><span data-i18n="dirLevel">層</span> <input id="file-depth" type="number" min="0" max="8" value="1"></label>
+      </div>
       <div id="zip-actions" class="row" hidden>
         <b id="zip-sel"></b>
         <button id="zip-sync" type="button" data-i18n="zipSync" data-i18n-title="zipSyncTip">同步到…</button>
@@ -30,8 +34,6 @@
         <button id="dir-rename" type="button" data-i18n="dirRename" data-i18n-title="dirRenameTip">重新命名</button>
         <button id="dir-flatten" type="button" data-i18n="dirFlatten" data-i18n-title="dirFlattenTip">拿掉這層</button>
         <label class="dir-level" data-i18n-title="dirLevelTip"><span data-i18n="dirLevel">層</span> <input id="dir-level" type="number" min="0" max="8" value="0"></label>
-        <button id="file-rule" type="button" data-i18n="fileRule" data-i18n-title="fileRuleTip">處理檔名</button>
-        <label class="dir-level" data-i18n-title="fileRuleDepthTip" title="0＝底下所有檔案；N＝只處理第 N 層"><span data-i18n="dirLevel">層</span> <input id="file-depth" type="number" min="0" max="8" value="0"></label>
         <button id="dir-mask" type="button" data-i18n="dirMask" data-i18n-title="dirMaskTip">遮蔽名稱</button>
         <button id="dir-unmask" type="button" data-i18n="dirUnmask" data-i18n-title="dirUnmaskTip">還原名稱</button>
       </div>
