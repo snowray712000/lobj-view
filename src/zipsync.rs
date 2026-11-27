@@ -265,6 +265,7 @@ fn sub_dirs(dir: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
 /// （例如在 R 選 2：`R/aa1/lobj`、`R/aa2/lobj` 都被拿掉，內容移到 `R/aa1`、`R/aa2`）。
 /// 先檢查全部目標，上一層已有同名項目（含與目標自己同名、或同一層的兩個目標內容互相同名）就整個不動並回 409；
 /// 最後用 `remove_dir`（只刪空資料夾）所以不會誤刪內容。回 `{ "moved": 搬了幾個項目, "folders": 處理幾個資料夾 }`。
+/// `dry_run: true`：只預覽不動，回 `{ folders, moved, targets:[{path,items}], clashes, clash_list:[{from,to}] }`（清單最多各 300 筆）。
 async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     respond(async {
         crate::assoc::guard_with(&shared, &headers, true, REMOTE_MSG).map_err(|(c, m)| (c, m.to_string()))?;
@@ -291,24 +292,50 @@ async fn dir_flatten(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json
         // (搬的來源, 目的地)
         let mut moves: Vec<(PathBuf, PathBuf)> = Vec::new();
         let mut planned: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-        let mut clash: Vec<String> = Vec::new();
+        let mut clash: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut per_target: Vec<(PathBuf, usize)> = Vec::new();
         for t in &targets {
             let Some(parent) = t.parent() else { return Err(bad("沒有上一層")) };
             if root.starts_with(t) {
                 return Err(bad("不能操作根資料夾（或它的上層）"));
             }
+            let mut n = 0;
             for e in std::fs::read_dir(t).map_err(io)?.filter_map(Result::ok) {
                 let to = parent.join(e.file_name());
                 if to.exists() || !planned.insert(to.clone()) {
-                    clash.push(to.strip_prefix(&top).unwrap_or(&to).to_string_lossy().into_owned());
+                    clash.push((e.path(), to.clone()));
                 }
                 moves.push((e.path(), to));
+                n += 1;
             }
+            per_target.push((t.clone(), n));
+        }
+        if body.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false) {
+            // 預覽：不動任何東西，列出會處理的資料夾（含各有幾個項目）與不符合（會衝突）的路徑
+            let lim = 300;
+            let ts = per_target
+                .iter()
+                .take(lim)
+                .map(|(p, n)| format!("{{\"path\":{},\"items\":{n}}}", json_string(&p.to_string_lossy())))
+                .collect::<Vec<_>>()
+                .join(",");
+            let cs = clash
+                .iter()
+                .take(lim)
+                .map(|(f, t)| format!("{{\"from\":{},\"to\":{}}}", json_string(&f.to_string_lossy()), json_string(&t.to_string_lossy())))
+                .collect::<Vec<_>>()
+                .join(",");
+            return Ok(format!(
+                "{{\"folders\":{},\"moved\":{},\"targets\":[{ts}],\"clashes\":{},\"clash_list\":[{cs}]}}",
+                targets.len(),
+                moves.len(),
+                clash.len()
+            ));
         }
         if !clash.is_empty() {
-            let shown = clash.iter().take(5).cloned().collect::<Vec<_>>().join("、");
+            let shown = clash.iter().take(5).map(|(_, t)| t.to_string_lossy().into_owned()).collect::<Vec<_>>().join("、");
             let more = if clash.len() > 5 { format!(" 等 {} 項", clash.len()) } else { String::new() };
-            return Err((StatusCode::CONFLICT, format!("上一層已有同名項目：{shown}{more}，未做任何變更")));
+            return Err((StatusCode::CONFLICT, format!("已有同名項目：{shown}{more}，未做任何變更")));
         }
         for (from, to) in &moves {
             std::fs::rename(from, to).map_err(io)?;

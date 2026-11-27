@@ -923,7 +923,8 @@ body {
   width: 3.5em;
 }
 
-#mask-dlg {
+#mask-dlg,
+#flat-dlg {
   background: var(--secondarySystemBackground);
   color: var(--label);
   border: 1px solid var(--separator);
@@ -932,11 +933,13 @@ body {
   width: min(380px, calc(100vw - 32px));
 }
 
-#mask-dlg::backdrop {
+#mask-dlg::backdrop,
+#flat-dlg::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
 
-#mask-title {
+#mask-title,
+#flat-title {
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -951,4 +954,26 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+#flat-dlg {
+  width: min(640px, calc(100vw - 32px));
+}
+
+#flat-body {
+  max-height: 50vh;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 10px;
+  word-break: break-all;
+}
+
+#flat-body .flat-bad {
+  color: #d33;
+}
+
+#flat-body ul {
+  margin: 2px 0 8px;
+  padding-left: 18px;
 }

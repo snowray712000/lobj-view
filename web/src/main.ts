@@ -1119,11 +1119,69 @@ document.getElementById('dir-rename')!.addEventListener('click', async () => {
   await browse(curDir);
 });
 
+interface FlatPreview {
+  folders: number;
+  moved: number;
+  targets: { path: string; items: number }[];
+  clashes: number;
+  clash_list: { from: string; to: string }[];
+}
+
+/** 預覽視窗：列出會處理的資料夾與不符合的路徑，回傳使用者按了確定（且沒有不符合的項目）。 */
+function confirmFlatten(title: string, pv: FlatPreview): Promise<boolean> {
+  const dlg = document.getElementById('flat-dlg') as HTMLDialogElement;
+  const body = document.getElementById('flat-body')!;
+  const ok = document.getElementById('flat-ok') as HTMLButtonElement;
+  document.getElementById('flat-title')!.textContent = title;
+  body.replaceChildren();
+  const addList = (head: string, rows: string[], bad: boolean, more: boolean) => {
+    const h = document.createElement('div');
+    h.textContent = head;
+    if (bad) h.className = 'flat-bad';
+    const ul = document.createElement('ul');
+    for (const r of rows) {
+      const li = document.createElement('li');
+      li.textContent = r;
+      if (bad) li.className = 'flat-bad';
+      ul.append(li);
+    }
+    if (more) {
+      const li = document.createElement('li');
+      li.textContent = t().flatMore;
+      ul.append(li);
+    }
+    body.append(h, ul);
+  };
+  if (pv.clashes > 0) {
+    addList(t().flatClashHead(pv.clashes), pv.clash_list.map((c) => `${c.from}  →  ${c.to}`), true, pv.clashes > pv.clash_list.length);
+  }
+  addList(t().flatSummary(pv.folders, pv.moved), pv.targets.map((x) => `${x.path}  (${t().flatItems(x.items)})`), false, pv.folders > pv.targets.length);
+  ok.disabled = pv.clashes > 0;
+  return new Promise((resolve) => {
+    const done = (v: boolean) => {
+      ok.onclick = null;
+      (document.getElementById('flat-cancel') as HTMLButtonElement).onclick = null;
+      dlg.onclose = null;
+      if (dlg.open) dlg.close();
+      resolve(v);
+    };
+    ok.onclick = () => done(true);
+    (document.getElementById('flat-cancel') as HTMLButtonElement).onclick = () => done(false);
+    dlg.onclose = () => done(false);
+    dlg.showModal();
+  });
+}
+
 document.getElementById('dir-flatten')!.addEventListener('click', async () => {
   if (!selDir) return;
   const n = selDir.split('/').pop()!;
   const level = Math.max(0, Math.min(8, Math.floor(Number((document.getElementById('dir-level') as HTMLInputElement).value) || 0)));
-  if (!confirm(level === 0 ? t().dirFlattenConfirm(n) : t().dirFlattenLevelConfirm(n, level))) return;
+  const pr = await assocCall('/api/dir-flatten', { path: selDir, level, dry_run: true });
+  if (!pr.ok) {
+    infoEl.textContent = t().failed(await pr.text());
+    return;
+  }
+  if (!(await confirmFlatten(t().flatTitle(n, level), (await pr.json()) as FlatPreview))) return;
   const r = await assocCall('/api/dir-flatten', { path: selDir, level });
   if (!r.ok) {
     infoEl.textContent = t().failed(await r.text());
